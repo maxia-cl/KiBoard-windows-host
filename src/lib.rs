@@ -14,6 +14,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_autostart::ManagerExt;
 
 const WS_PORT: u16 = 8770;
 const HOST_NAME: &str = "KiBoard Host";
@@ -28,57 +29,91 @@ struct Button {
     icon: String,
     /// Atajo ("ctrl+shift+p", "alt+F4", "ctrl+c") o la palabra clave "screenshot".
     action: String,
+    /// Acción peligrosa: el móvil la pinta en rojo y pide confirmación.
+    #[serde(default)]
+    danger: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Profile {
     id: String,
-    /// Subcadenas que deben aparecer en el nombre de la app activa. Vacío = perfil por defecto.
+    /// Subcadenas que deben aparecer en el nombre de la app activa O en el título de la ventana
+    /// (esto permite sub-perfiles por pestaña: "Google Sheets", "Google Drive"…). Vacío = fallback.
     #[serde(default)]
     matches: Vec<String>,
     buttons: Vec<Button>,
 }
 
 fn b(label: &str, icon: &str, action: &str) -> Button {
-    Button { label: label.into(), icon: icon.into(), action: action.into() }
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: false }
+}
+fn bd(label: &str, icon: &str, action: &str) -> Button {
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: true }
+}
+fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
+    Profile { id: id.into(), matches: matches.iter().map(|s| s.to_string()).collect(), buttons }
 }
 
+/// Perfiles por defecto. El orden importa: los más específicos (pestañas de Chrome) van primero,
+/// para que ganen sobre el perfil genérico de "browser".
 fn default_profiles() -> Vec<Profile> {
+    let cerrar = bd("Cerrar app", "close", "alt+F4");
     vec![
-        Profile {
-            id: "editor".into(),
-            matches: vec!["code".into(), "devenv".into()],
-            buttons: vec![
-                b("Guardar", "save", "ctrl+s"),
-                b("Buscar", "find", "ctrl+f"),
-                b("Deshacer", "undo", "ctrl+z"),
-                b("Rehacer", "redo", "ctrl+y"),
-                b("Copiar", "copy", "ctrl+c"),
-                b("Pegar", "paste", "ctrl+v"),
-            ],
-        },
-        Profile {
-            id: "browser".into(),
-            matches: vec!["chrome".into(), "edge".into(), "firefox".into(), "brave".into()],
-            buttons: vec![
-                b("Nueva pestaña", "tab", "ctrl+t"),
-                b("Cerrar pestaña", "close", "ctrl+w"),
-                b("Buscar", "find", "ctrl+f"),
-                b("Copiar", "copy", "ctrl+c"),
-                b("Pegar", "paste", "ctrl+v"),
-                b("Captura", "screenshot", "screenshot"),
-            ],
-        },
-        Profile {
-            id: "generic".into(),
-            matches: vec![], // fallback
-            buttons: vec![
-                b("Copiar", "copy", "ctrl+c"),
-                b("Pegar", "paste", "ctrl+v"),
-                b("Captura", "screenshot", "screenshot"),
-                b("Cerrar app", "close", "alt+F4"),
-            ],
-        },
+        // --- Pestañas de Chrome/navegador (coinciden por título de la ventana) ---
+        profile("gsheets", &["google sheets", "hojas de cálculo"], vec![
+            b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("gdocs", &["google docs", "documentos de google"], vec![
+            b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"),
+            b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("gdrive", &["google drive", "mi unidad"], vec![
+            b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "tab", "ctrl+t"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("gmail", &["gmail"], vec![
+            b("Redactar", "tab", "c"), b("Buscar", "find", "/"),
+            b("Responder", "redo", "r"), b("Archivar", "close", "e"),
+        ]),
+        profile("youtube", &["youtube"], vec![
+            b("Play/Pausa", "tab", "k"), b("Silenciar", "close", "m"),
+            b("Pantalla completa", "screenshot", "f"), b("Captura", "screenshot", "screenshot"),
+        ]),
+        // --- Apps de escritorio comunes ---
+        profile("editor", &["code", "devenv", "visual studio"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Paleta", "tab", "ctrl+shift+p"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("word", &["word"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Negrita", "undo", "ctrl+b"),
+            b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("excel", &["excel"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("explorer", &["explorador", "file explorer", "explorer"], vec![
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Nueva carpeta", "tab", "ctrl+shift+n"), b("Renombrar", "redo", "f2"),
+            cerrar.clone(),
+        ]),
+        // --- Navegador genérico (cualquier pestaña no específica) ---
+        profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
+            b("Nueva pestaña", "tab", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
+            b("Buscar", "find", "ctrl+f"), b("Copiar", "copy", "ctrl+c"),
+            b("Pegar", "paste", "ctrl+v"), b("Captura", "screenshot", "screenshot"),
+        ]),
+        // --- Fallback ---
+        profile("generic", &[], vec![
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Captura", "screenshot", "screenshot"), cerrar,
+        ]),
     ]
 }
 
@@ -149,14 +184,15 @@ fn now_ts() -> u64 {
 // Auto-switching
 // ---------------------------------------------------------------------------
 
-/// Construye el JSON de layout para la app dada (nombre + ícono en base64), según los perfiles.
-fn layout_for(app: &str, icon_b64: &str) -> String {
+/// Construye el JSON de layout para la app dada, según los perfiles. Matchea contra el nombre de la
+/// app Y el título de la ventana (esto habilita sub-perfiles por pestaña, p. ej. Google Sheets).
+fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
     let cfg = config().lock().unwrap();
-    let a = app.to_lowercase();
+    let hay = format!("{app} {title}").to_lowercase();
     let profile = cfg
         .profiles
         .iter()
-        .find(|p| p.matches.iter().any(|m| a.contains(&m.to_lowercase())))
+        .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
         .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
         .or_else(|| cfg.profiles.last());
     let (profile_id, buttons): (String, Vec<_>) = match profile {
@@ -165,7 +201,7 @@ fn layout_for(app: &str, icon_b64: &str) -> String {
             p.buttons
                 .iter()
                 .enumerate()
-                .map(|(i, btn)| json!({ "id": i, "label": btn.label, "action": btn.action, "icon": btn.icon }))
+                .map(|(i, btn)| json!({ "id": i, "label": btn.label, "action": btn.action, "icon": btn.icon, "danger": btn.danger }))
                 .collect(),
         ),
         None => ("empty".into(), vec![]),
@@ -198,15 +234,15 @@ async fn watch_active_app() {
     let mut icon = String::new();
     let mut last_layout = String::new();
     loop {
-        let (app, path) = match active_win_pos_rs::get_active_window() {
-            Ok(w) => (w.app_name, w.process_path.to_string_lossy().to_string()),
-            Err(_) => (String::new(), String::new()),
+        let (app, title, path) = match active_win_pos_rs::get_active_window() {
+            Ok(w) => (w.app_name, w.title, w.process_path.to_string_lossy().to_string()),
+            Err(_) => (String::new(), String::new(), String::new()),
         };
         if app != last_app {
             last_app = app.clone();
             icon = extract_icon_b64(&path); // solo al cambiar de app
         }
-        let layout = layout_for(&app, &icon);
+        let layout = layout_for(&app, &title, &icon);
         if layout != last_layout {
             last_layout = layout.clone();
             *current_layout().lock().unwrap() = layout.clone();
@@ -242,9 +278,16 @@ async fn handle_conn(stream: TcpStream) {
     let (mut write, mut read) = ws.split();
     let mut rx = tx().subscribe();
     let mut authed = false;
+    let mut keepalive = tokio::time::interval(Duration::from_secs(15));
 
     loop {
         tokio::select! {
+            _ = keepalive.tick() => {
+                // Ping de texto (el móvil ignora type=ping); mantiene viva la conexión.
+                if authed && write.send(Message::text("{\"v\":1,\"type\":\"ping\"}")).await.is_err() {
+                    break;
+                }
+            }
             incoming = read.next() => {
                 let Some(Ok(msg)) = incoming else { break };
                 if msg.is_close() { break; }
@@ -493,6 +536,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .invoke_handler(tauri::generate_handler![
             pairing_info,
             unpair_all,
@@ -502,6 +549,9 @@ pub fn run() {
         .setup(|app| {
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
+
+            // Arranca con Windows (idempotente).
+            let _ = app.autolaunch().enable();
 
             // Busca actualizaciones en GitHub al arrancar (silencioso si no hay/conexión falla).
             let handle = app.handle().clone();
