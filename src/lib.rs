@@ -54,12 +54,12 @@ fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
     Profile { id: id.into(), matches: matches.iter().map(|s| s.to_string()).collect(), buttons }
 }
 
-/// Perfiles por defecto. El orden importa: los más específicos (pestañas de Chrome) van primero,
-/// para que ganen sobre el perfil genérico de "browser".
+/// Catálogo de perfiles por defecto. El orden importa: los más específicos (pestañas de Chrome)
+/// van primero, para que ganen sobre el perfil genérico de "browser". A todos se les añade al final
+/// el botón "Cerrar app" (rojo + confirmación). Todos son editables desde la UI del host.
 fn default_profiles() -> Vec<Profile> {
-    let cerrar = bd("Cerrar app", "close", "alt+F4");
-    vec![
-        // --- Pestañas de Chrome/navegador (coinciden por título de la ventana) ---
+    let mut list = vec![
+        // --- Pestañas de Chrome/navegador (coinciden por TÍTULO de la ventana) ---
         profile("gsheets", &["google sheets", "hojas de cálculo"], vec![
             b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
             b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
@@ -67,27 +67,21 @@ fn default_profiles() -> Vec<Profile> {
         ]),
         profile("gdocs", &["google docs", "documentos de google"], vec![
             b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
-            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"),
-            b("Pegar", "paste", "ctrl+v"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
         ]),
         profile("gdrive", &["google drive", "mi unidad"], vec![
-            b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "tab", "ctrl+t"),
+            b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "new", "ctrl+t"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
         ]),
         profile("gmail", &["gmail"], vec![
-            b("Redactar", "tab", "c"), b("Buscar", "find", "/"),
+            b("Redactar", "new", "c"), b("Buscar", "find", "/"),
             b("Responder", "redo", "r"), b("Archivar", "close", "e"),
         ]),
         profile("youtube", &["youtube"], vec![
-            b("Play/Pausa", "tab", "k"), b("Silenciar", "close", "m"),
-            b("Pantalla completa", "screenshot", "f"), b("Captura", "screenshot", "screenshot"),
+            b("Play/Pausa", "play", "k"), b("Silenciar", "mute", "m"),
+            b("Pantalla completa", "video", "f"), b("Captura", "screenshot", "screenshot"),
         ]),
-        // --- Apps de escritorio comunes ---
-        profile("editor", &["code", "devenv", "visual studio"], vec![
-            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
-            b("Paleta", "tab", "ctrl+shift+p"), b("Deshacer", "undo", "ctrl+z"),
-            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-        ]),
+        // --- Office ---
         profile("word", &["word"], vec![
             b("Guardar", "save", "ctrl+s"), b("Negrita", "undo", "ctrl+b"),
             b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
@@ -98,28 +92,111 @@ fn default_profiles() -> Vec<Profile> {
             b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
         ]),
+        profile("powerpoint", &["powerpoint"], vec![
+            b("Presentar", "play", "f5"), b("Nueva diap.", "new", "ctrl+m"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("outlook", &["outlook"], vec![
+            b("Nuevo correo", "new", "ctrl+n"), b("Responder", "redo", "ctrl+r"),
+            b("Enviar", "play", "ctrl+enter"), b("Buscar", "find", "ctrl+e"),
+        ]),
+        profile("acrobat", &["acrobat"], vec![
+            b("Buscar", "find", "ctrl+f"), b("Imprimir", "save", "ctrl+p"),
+            b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"),
+        ]),
+        // --- Creativas ---
+        profile("photoshop", &["photoshop"], vec![
+            b("Deshacer", "undo", "ctrl+z"), b("Pincel", "new", "b"), b("Mover", "tab", "v"),
+            b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("illustrator", &["illustrator"], vec![
+            b("Deshacer", "undo", "ctrl+z"), b("Selección", "tab", "v"),
+            b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("premiere", &["premiere"], vec![
+            b("Play/Pausa", "play", "k"), b("Cortar", "new", "c"), b("Selección", "tab", "v"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+        ]),
+        profile("figma", &["figma"], vec![
+            b("Mover", "tab", "v"), b("Marco", "new", "f"), b("Comentar", "redo", "c"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"), b("Deshacer", "undo", "ctrl+z"),
+        ]),
+        // --- Comunicación / reuniones ---
+        profile("slack", &["slack"], vec![
+            b("Saltar a", "find", "ctrl+k"), b("Negrita", "undo", "ctrl+b"),
+            b("Hilos", "redo", "ctrl+shift+t"), b("Copiar", "copy", "ctrl+c"),
+        ]),
+        profile("discord", &["discord"], vec![
+            b("Silenciar", "mute", "ctrl+shift+m"), b("Audio", "video", "ctrl+shift+d"),
+            b("Buscar", "find", "ctrl+f"),
+        ]),
+        profile("teams", &["teams"], vec![
+            b("Silenciar", "mic", "ctrl+shift+m"), b("Cámara", "video", "ctrl+shift+o"),
+            b("Compartir", "new", "ctrl+shift+e"), b("Colgar", "close", "ctrl+shift+h"),
+        ]),
+        profile("zoom", &["zoom"], vec![
+            b("Silenciar", "mic", "alt+a"), b("Vídeo", "video", "alt+v"),
+            b("Compartir", "new", "alt+s"), b("Salir", "close", "alt+q"),
+        ]),
+        profile("notion", &["notion"], vec![
+            b("Buscar", "find", "ctrl+p"), b("Negrita", "undo", "ctrl+b"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        // --- Multimedia ---
+        profile("spotify", &["spotify"], vec![
+            b("Play/Pausa", "play", "space"), b("Siguiente", "redo", "ctrl+right"),
+            b("Anterior", "undo", "ctrl+left"),
+        ]),
+        profile("vlc", &["vlc"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "video", "f"),
+            b("Silenciar", "mute", "m"), b("+ Volumen", "vol", "ctrl+up"), b("- Volumen", "vol", "ctrl+down"),
+        ]),
+        // --- Desarrollo / sistema ---
+        profile("editor", &["code", "devenv", "visual studio"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Paleta", "new", "ctrl+shift+p"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt"], vec![
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Nueva pestaña", "new", "ctrl+shift+t"), b("Buscar", "find", "ctrl+f"),
+        ]),
+        profile("notepadpp", &["notepad++"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Reemplazar", "redo", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+        ]),
         profile("explorer", &["explorador", "file explorer", "explorer"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-            b("Nueva carpeta", "tab", "ctrl+shift+n"), b("Renombrar", "redo", "f2"),
-            cerrar.clone(),
+            b("Nueva carpeta", "new", "ctrl+shift+n"), b("Renombrar", "redo", "f2"),
         ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
-            b("Nueva pestaña", "tab", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
-            b("Buscar", "find", "ctrl+f"), b("Copiar", "copy", "ctrl+c"),
-            b("Pegar", "paste", "ctrl+v"), b("Captura", "screenshot", "screenshot"),
+            b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
+            b("Recargar", "refresh", "f5"), b("Buscar", "find", "ctrl+f"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
         ]),
         // --- Fallback ---
         profile("generic", &[], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-            b("Captura", "screenshot", "screenshot"), cerrar,
+            b("Captura", "screenshot", "screenshot"),
         ]),
-    ]
+    ];
+    // "Cerrar app" (rojo + confirmación) en TODOS los perfiles.
+    for p in &mut list {
+        p.buttons.push(bd("Cerrar app", "close", "alt+F4"));
+    }
+    list
 }
 
 // ---------------------------------------------------------------------------
 // Configuración persistente
 // ---------------------------------------------------------------------------
+
+/// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
+/// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
+const PROFILES_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -128,6 +205,8 @@ struct Config {
     paired: Vec<String>,
     #[serde(default)]
     profiles: Vec<Profile>,
+    #[serde(default)]
+    profiles_version: u32,
 }
 
 impl Config {
@@ -144,8 +223,10 @@ impl Config {
         if c.token.is_empty() {
             c.token = new_token();
         }
-        if c.profiles.is_empty() {
+        // Refresca los perfiles integrados en instalaciones nuevas o al subir la versión.
+        if c.profiles.is_empty() || c.profiles_version < PROFILES_VERSION {
             c.profiles = default_profiles();
+            c.profiles_version = PROFILES_VERSION;
         }
         c.save();
         c
