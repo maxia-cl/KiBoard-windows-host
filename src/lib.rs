@@ -13,6 +13,7 @@ use tauri::Manager;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
+use tauri_plugin_updater::UpdaterExt;
 
 const WS_PORT: u16 = 8770;
 const HOST_NAME: &str = "KiBoard Host";
@@ -491,6 +492,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             pairing_info,
             unpair_all,
@@ -500,6 +502,18 @@ pub fn run() {
         .setup(|app| {
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
+
+            // Busca actualizaciones en GitHub al arrancar (silencioso si no hay/conexión falla).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(updater) = handle.updater() {
+                    if let Ok(Some(update)) = updater.check().await {
+                        if update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+                            handle.restart();
+                        }
+                    }
+                }
+            });
 
             let pair = MenuItem::with_id(app, "pair", "Abrir KiBoard…", true, None::<&str>)?;
             let unpair = MenuItem::with_id(app, "unpair", "Desvincular todo", true, None::<&str>)?;
