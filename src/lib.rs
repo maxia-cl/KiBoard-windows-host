@@ -1,4 +1,4 @@
-// SmartKey host — Fase 5 (perfiles programables).
+// KiBoard host — Fase 5 (perfiles programables).
 // WS en LAN + emparejamiento por token/QR + comandos (atajos arbitrarios) + auto-switching
 // con perfiles editables por el usuario desde la UI. Protocolo: ver /protocol/README.md
 
@@ -15,7 +15,7 @@ use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 
 const WS_PORT: u16 = 8770;
-const HOST_NAME: &str = "SmartKey Host";
+const HOST_NAME: &str = "KiBoard Host";
 
 // ---------------------------------------------------------------------------
 // Modelo de datos
@@ -96,7 +96,7 @@ struct Config {
 
 impl Config {
     fn path() -> std::path::PathBuf {
-        let dir = dirs::config_dir().unwrap_or(std::env::temp_dir()).join("SmartKey");
+        let dir = dirs::config_dir().unwrap_or(std::env::temp_dir()).join("KiBoard");
         let _ = std::fs::create_dir_all(&dir);
         dir.join("config.json")
     }
@@ -223,11 +223,11 @@ async fn run_ws_server() {
     let listener = match TcpListener::bind(("0.0.0.0", WS_PORT)).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("SmartKey: no se pudo abrir el puerto {WS_PORT}: {e}");
+            eprintln!("KiBoard: no se pudo abrir el puerto {WS_PORT}: {e}");
             return;
         }
     };
-    eprintln!("SmartKey: escuchando en ws://0.0.0.0:{WS_PORT}");
+    eprintln!("KiBoard: escuchando en ws://0.0.0.0:{WS_PORT}");
     while let Ok((stream, _addr)) = listener.accept().await {
         tokio::spawn(handle_conn(stream));
     }
@@ -379,7 +379,7 @@ fn take_screenshot() -> Result<(), &'static str> {
     use xcap::Monitor;
     let monitor = Monitor::all().map_err(|_| "internal")?.into_iter().next().ok_or("no_monitor")?;
     let img = monitor.capture_image().map_err(|_| "internal")?;
-    let dir = dirs::picture_dir().unwrap_or(std::env::temp_dir()).join("SmartKey");
+    let dir = dirs::picture_dir().unwrap_or(std::env::temp_dir()).join("KiBoard");
     std::fs::create_dir_all(&dir).map_err(|_| "internal")?;
     let path = dir.join(format!("screenshot-{}.png", now_ts()));
     img.save(&path).map_err(|_| "internal")?;
@@ -501,9 +501,9 @@ pub fn run() {
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
 
-            let pair = MenuItem::with_id(app, "pair", "Abrir SmartKey…", true, None::<&str>)?;
+            let pair = MenuItem::with_id(app, "pair", "Abrir KiBoard…", true, None::<&str>)?;
             let unpair = MenuItem::with_id(app, "unpair", "Desvincular todo", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Salir de SmartKey", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Salir de KiBoard", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&pair, &unpair, &quit])?;
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
