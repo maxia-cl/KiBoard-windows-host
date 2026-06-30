@@ -565,15 +565,33 @@ fn list_windows_json() -> String {
 }
 
 /// Trae una ventana al primer plano (la restaura si está minimizada).
+/// Windows bloquea el robo de foco desde un proceso en segundo plano; lo sorteamos con un
+/// toque de Alt + AttachThreadInput (técnica estándar) para forzar el primer plano de verdad.
 fn focus_window(id: isize) {
+    use enigo::{
+        Direction::{Press, Release},
+        Enigo, Key, Keyboard, Settings,
+    };
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+    };
+    // Mantener Alt presionado durante el cambio sortea el bloqueo de primer plano de Windows.
+    let mut enigo = Enigo::new(&Settings::default()).ok();
+    if let Some(e) = enigo.as_mut() {
+        let _ = e.key(Key::Alt, Press);
+    }
     unsafe {
         let h = HWND(id as *mut core::ffi::c_void);
         if IsIconic(h).as_bool() {
             let _ = ShowWindow(h, SW_RESTORE);
         }
+        let _ = ShowWindow(h, SW_SHOW);
+        let _ = BringWindowToTop(h);
         let _ = SetForegroundWindow(h);
+    }
+    if let Some(e) = enigo.as_mut() {
+        let _ = e.key(Key::Alt, Release);
     }
 }
 
