@@ -280,16 +280,17 @@ fn default_profiles() -> Vec<Profile> {
             bx("Círculo", "new", "c"), bx("Línea", "new", "l"), bx("Agrupar", "tab", "ctrl+g"),
         ]),
         // Paint: la barra de herramientas no tiene atajos → se pulsan por UI Automation ("uia:<nombre>").
-        // Los nombres son por coincidencia parcial; ajustar si tu Paint usa otras etiquetas.
+        // Nombres reales de la barra (Paint Win11 ES) verificados con UIAutomation.
         profile("paint", &["paint"], vec![
-            b("Lápiz", "brush", "uia:Lápiz"), b("Pinceles", "brush", "uia:Pinceles"),
-            b("Relleno", "image", "uia:Rellenar"), b("Texto", "text", "uia:Texto"),
-            b("Borrador", "delete", "uia:Borrador"), b("Formas", "new", "uia:Formas"),
-            b("Selector", "find", "uia:Selector"), b("Seleccionar", "tab", "uia:Seleccionar"),
-            bx("Tamaño", "settings", "uia:Tamaño"),
+            b("Lápiz", "brush", "uia:Lápiz"), b("Relleno", "image", "uia:Relleno"),
+            b("Texto", "text", "uia:Texto"), b("Borrador", "delete", "uia:Borrador"),
+            b("Selector color", "find", "uia:Selector de colores"),
+            b("Rectángulo", "new", "uia:Rectángulo"), b("Elipse", "star", "uia:Elipse"),
+            b("Línea", "link", "uia:Línea"),
+            bx("Tamaño", "settings", "uia:Tamaño"), bx("Lupa", "zoomin", "uia:Lupa"),
+            bx("Recortar", "new", "uia:Recortar"), bx("Girar", "refresh", "uia:Girar"),
             bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
-            bx("Guardar", "save", "ctrl+s"), bx("Recortar", "new", "ctrl+shift+x"),
-            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+            bx("Guardar", "save", "ctrl+s"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
         ]),
         profile("davinci", &["davinci", "resolve"], vec![
             b("Play/Pausa", "play", "space"), b("Entrada", "redo", "i"), b("Salida", "undo", "o"),
@@ -418,7 +419,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 7;
+const PROFILES_VERSION: u32 = 8;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -685,13 +686,26 @@ fn invoke_uia(name: &str) -> Result<(), &'static str> {
     use uiautomation::UIAutomation;
     let automation = UIAutomation::new().map_err(|_| "uia_init")?;
     let root = automation.get_root_element().map_err(|_| "uia_root")?;
-    let matcher = automation
+    // Nombre exacto primero (sin ambigüedad: "Rectángulo" no choca con "Rectángulo redondeado");
+    // si no, coincidencia parcial como red de seguridad.
+    let exact = automation
         .create_matcher()
         .from_ref(&root)
-        .contains_name(name)
+        .name(name)
         .depth(20)
-        .timeout(800);
-    let el = matcher.find_first().map_err(|_| "uia_not_found")?;
+        .timeout(800)
+        .find_first();
+    let el = match exact {
+        Ok(e) => e,
+        Err(_) => automation
+            .create_matcher()
+            .from_ref(&root)
+            .contains_name(name)
+            .depth(20)
+            .timeout(800)
+            .find_first()
+            .map_err(|_| "uia_not_found")?,
+    };
     el.click().map_err(|_| "uia_click")
 }
 
