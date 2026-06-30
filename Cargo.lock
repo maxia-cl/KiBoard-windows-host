@@ -1084,6 +1084,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "tokio-tungstenite",
+ "windows 0.60.0",
  "windows-icons",
  "xcap",
 ]

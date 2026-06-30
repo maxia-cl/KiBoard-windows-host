@@ -423,6 +423,20 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
                 Err(e) => json!({"v":1,"type":"command_result","id":id,"ok":false,"error":e}).to_string(),
             }
         }
+        Some("list_windows") => {
+            if !*authed {
+                return json!({"v":1,"type":"windows","items":[]}).to_string();
+            }
+            list_windows_json()
+        }
+        Some("focus_window") => {
+            if !*authed {
+                return json!({"v":1,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
+            }
+            let id = val["id"].as_i64().unwrap_or(0) as isize;
+            focus_window(id);
+            json!({"v":1,"type":"command_result","ok":true}).to_string()
+        }
         _ => json!({"v":1,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
     }
 }
@@ -509,6 +523,58 @@ fn take_screenshot() -> Result<(), &'static str> {
     let path = dir.join(format!("screenshot-{}.png", now_ts()));
     img.save(&path).map_err(|_| "internal")?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Cambiador de apps: enumerar ventanas visibles y enfocarlas (Win32)
+// ---------------------------------------------------------------------------
+
+unsafe extern "system" fn enum_windows_cb(
+    hwnd: windows::Win32::Foundation::HWND,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::core::BOOL {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTextW, IsWindowVisible};
+    let list = &mut *(lparam.0 as *mut Vec<(isize, String)>);
+    if IsWindowVisible(hwnd).as_bool() {
+        let len = GetWindowTextLengthW(hwnd);
+        if len > 0 {
+            let mut buf = vec![0u16; len as usize + 1];
+            let read = GetWindowTextW(hwnd, &mut buf);
+            let title = String::from_utf16_lossy(&buf[..read as usize]);
+            if !title.is_empty() && title != "Program Manager" {
+                list.push((hwnd.0 as isize, title));
+            }
+        }
+    }
+    windows::core::BOOL(1)
+}
+
+/// Lista las ventanas de apps abiertas (JSON `windows`).
+fn list_windows_json() -> String {
+    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
+    let mut list: Vec<(isize, String)> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(enum_windows_cb), LPARAM(&mut list as *mut _ as isize));
+    }
+    let items: Vec<_> = list
+        .into_iter()
+        .map(|(id, title)| json!({ "id": id, "title": title }))
+        .collect();
+    json!({ "v": 1, "type": "windows", "items": items }).to_string()
+}
+
+/// Trae una ventana al primer plano (la restaura si está minimizada).
+fn focus_window(id: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
+    unsafe {
+        let h = HWND(id as *mut core::ffi::c_void);
+        if IsIconic(h).as_bool() {
+            let _ = ShowWindow(h, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(h);
+    }
 }
 
 // ---------------------------------------------------------------------------
