@@ -452,8 +452,69 @@ fn default_profiles() -> Vec<Profile> {
             b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
             bx("Marcador", "star", "m"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
         ]),
+        // --- Lote 4: más apps/web hacia ~100 (también antes de "browser") ---
+        profile("lowriter", &["libreoffice writer"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Negrita", "bold", "ctrl+b"),
+            b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
+            bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("localc", &["libreoffice calc"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Negrita", "bold", "ctrl+b"), bx("Cursiva", "italic", "ctrl+i"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("loimpress", &["libreoffice impress"], vec![
+            b("Presentar", "play", "f5"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Negrita", "bold", "ctrl+b"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("notepad", &["notepad"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Reemplazar", "replace", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cortar", "cut", "ctrl+x"), bx("Ir a línea", "find", "ctrl+g"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("sumatra", &["sumatra"], vec![
+            b("Buscar", "find", "ctrl+f"), b("Ir a página", "find", "ctrl+g"),
+            b("Zoom +", "zoomin", "ctrl+="), b("Zoom -", "zoomout", "ctrl+-"),
+            bx("Pant. completa", "fullscreen", "f11"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("foxit", &["foxit"], vec![
+            b("Buscar", "find", "ctrl+f"), b("Guardar", "save", "ctrl+s"),
+            b("Imprimir", "print", "ctrl+p"), b("Copiar", "copy", "ctrl+c"),
+            bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
+        ]),
+        profile("shotcut", &["shotcut"], vec![
+            b("Play/Pausa", "play", "space"), b("Dividir", "cut", "s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Rehacer", "redo", "ctrl+shift+z"),
+        ]),
+        profile("musescore", &["musescore"], vec![
+            b("Reproducir", "play", "space"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+shift+z"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("soundcloud", &["soundcloud"], vec![
+            b("Play/Pausa", "play", "space"), b("Siguiente", "next", "shift+right"),
+            b("Anterior", "prev", "shift+left"), b("Me gusta", "star", "l"),
+        ]),
+        profile("potplayer", &["potplayer"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "enter"),
+            b("Silenciar", "mute", "m"), b("+ Volumen", "vol", "up"), b("- Volumen", "vol", "down"),
+        ]),
+        profile("primevideo", &["prime video"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("disney", &["disney+"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
-        profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
+        profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
             b("Recargar", "refresh", "f5"), b("Buscar", "find", "ctrl+f"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
@@ -482,7 +543,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 11;
+const PROFILES_VERSION: u32 = 12;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
