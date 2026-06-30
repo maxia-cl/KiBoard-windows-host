@@ -287,8 +287,10 @@ fn default_profiles() -> Vec<Profile> {
             b("Selector color", "colorpick", "uia:Selector de colores"),
             b("Rectángulo", "rect", "uia:Rectángulo"), b("Elipse", "ellipse", "uia:Elipse"),
             b("Línea", "line", "uia:Línea"),
-            bx("Tamaño", "lineweight", "uia:Tamaño"), bx("Lupa", "zoomin", "uia:Lupa"),
-            bx("Recortar", "crop", "uia:Recortar"), bx("Girar", "rotate", "uia:Girar"),
+            bx("Lupa", "zoomin", "uia:Lupa"),
+            bx("Recortar", "crop", "uia:Recortar"),
+            bx("Girar dcha.", "rotate", "uia:Girar>>Girar 90º a la derecha"),
+            bx("Girar izq.", "rotate", "uia:Girar>>Girar 90º a la izquierda"),
             bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
         ]),
@@ -650,7 +652,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 14;
+const PROFILES_VERSION: u32 = 16;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -722,30 +724,93 @@ fn now_ts() -> u64 {
 /// Construye el JSON de layout para la app dada, según los perfiles. Matchea contra el nombre de la
 /// app Y el título de la ventana (esto habilita sub-perfiles por pestaña, p. ej. Google Sheets).
 fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
-    let cfg = config().lock().unwrap();
-    let hay = format!("{app} {title}").to_lowercase();
-    let profile = cfg
-        .profiles
-        .iter()
-        .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
-        .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
-        .or_else(|| cfg.profiles.last());
-    let (profile_id, buttons): (String, Vec<_>) = match profile {
-        Some(p) => (
-            p.id.clone(),
-            p.buttons
-                .iter()
-                .enumerate()
-                .map(|(i, btn)| json!({ "id": i, "label": btn.label, "action": btn.action, "icon": btn.icon, "danger": btn.danger, "recommended": btn.recommended }))
-                .collect(),
-        ),
-        None => ("empty".into(), vec![]),
+    // Elegir perfil y COPIAR sus botones (id, label, action, icon, danger, recommended); soltar el
+    // lock antes de consultar UIA (lento) para no bloquear al resto.
+    let (profile_id, raw): (String, Vec<(usize, String, String, String, bool, bool)>) = {
+        let cfg = config().lock().unwrap();
+        let hay = format!("{app} {title}").to_lowercase();
+        let profile = cfg
+            .profiles
+            .iter()
+            .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
+            .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
+            .or_else(|| cfg.profiles.last());
+        match profile {
+            Some(p) => (
+                p.id.clone(),
+                p.buttons
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| {
+                        (i, b.label.clone(), b.action.clone(), b.icon.clone(), b.danger, b.recommended)
+                    })
+                    .collect(),
+            ),
+            None => ("empty".into(), vec![]),
+        }
     };
+    // Ocultar los botones uia cuyo control esté deshabilitado ahora (estado dinámico de la app:
+    // p. ej. "Recortar" solo se habilita con una selección hecha).
+    let disabled = uia_disabled_actions(&raw);
+    let buttons: Vec<_> = raw
+        .iter()
+        .filter(|(_, _, action, _, _, _)| !disabled.contains(action))
+        .map(|(i, label, action, icon, danger, rec)| {
+            json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec })
+        })
+        .collect();
     json!({
         "v": 1, "type": "layout", "profileId": profile_id,
         "appName": app, "appIcon": icon_b64, "buttons": buttons
     })
     .to_string()
+}
+
+/// Devuelve las acciones uia: cuyo control está deshabilitado en la ventana al frente (para ocultarlas).
+/// Vacío si el perfil no tiene botones uia → coste cero para apps normales.
+fn uia_disabled_actions(
+    buttons: &[(usize, String, String, String, bool, bool)],
+) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    use uiautomation::types::Handle;
+    use uiautomation::UIAutomation;
+    let mut out = HashSet::new();
+    // (acción completa, nombre del primer paso) de cada botón uia.
+    let targets: Vec<(&str, &str)> = buttons
+        .iter()
+        .filter_map(|(_, _, action, _, _, _)| {
+            action
+                .strip_prefix("uia:")
+                .map(|c| (action.as_str(), c.split(">>").next().unwrap_or(c).trim()))
+        })
+        .collect();
+    if targets.is_empty() {
+        return out;
+    }
+    let automation = match UIAutomation::new() {
+        Ok(a) => a,
+        Err(_) => return out,
+    };
+    let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    let root = match automation.element_from_handle(Handle::from(hwnd.0 as isize)) {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    for (action, name) in targets {
+        if let Ok(el) = automation
+            .create_matcher()
+            .from_ref(&root)
+            .name(name)
+            .depth(20)
+            .timeout(200)
+            .find_first()
+        {
+            if !el.is_enabled().unwrap_or(true) {
+                out.insert(action.to_string());
+            }
+        }
+    }
+    out
 }
 
 /// Extrae el ícono del ejecutable como PNG en base64. Cadena vacía si no se puede.
@@ -777,8 +842,13 @@ async fn watch_active_app() {
             last_app = app.clone();
             icon = extract_icon_b64(&path); // solo al cambiar de app
         }
-        let layout = layout_for(&app, &title, &icon);
-        if layout != last_layout {
+        let layout = {
+            let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
+            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic))
+                .await
+                .unwrap_or_default()
+        };
+        if !layout.is_empty() && layout != last_layout {
             last_layout = layout.clone();
             *current_layout().lock().unwrap() = layout.clone();
             let _ = tx().send(layout);
@@ -905,8 +975,16 @@ fn run_action(action: &str) -> Result<(), &'static str> {
     }
     // "uia:<nombre>" → pulsar un botón de la app en primer plano por su nombre de accesibilidad
     // (para barras de herramientas sin atajo de teclado, p. ej. Paint).
-    if let Some(name) = action.strip_prefix("uia:") {
-        return invoke_uia(name);
+    // Encadenable con ">>" para abrir un menú/flyout y luego elegir una opción:
+    // "uia:Girar>>Girar 90° a la derecha" → abre "Girar", espera, clica la opción.
+    if let Some(chain) = action.strip_prefix("uia:") {
+        for (i, step) in chain.split(">>").enumerate() {
+            if i > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(250)); // que el flyout se renderice
+            }
+            invoke_uia(step.trim())?;
+        }
+        return Ok(());
     }
     run_hotkey(action)
 }
@@ -917,35 +995,38 @@ fn invoke_uia(name: &str) -> Result<(), &'static str> {
     use uiautomation::types::Handle;
     use uiautomation::UIAutomation;
     let automation = UIAutomation::new().map_err(|_| "uia_init")?;
-    // Acotar a la ventana en primer plano (no a todo el escritorio): el árbol es mucho
-    // menor → la búsqueda baja de ~2s a milisegundos. Si falla, caer al root del escritorio.
+    let desktop = automation.get_root_element().map_err(|_| "uia_root")?;
+    // Acotar a la ventana en primer plano (árbol pequeño → rápido). Si ahí no aparece (un menú/
+    // flyout emergente puede vivir en otra ventana), reintentar desde el escritorio.
     let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
-    let root = automation
-        .element_from_handle(Handle::from(hwnd.0 as isize))
-        .or_else(|_| automation.get_root_element())
-        .map_err(|_| "uia_root")?;
-    // TODOS los candidatos: nombre exacto primero ("Rectángulo" no choca con "Rectángulo
-    // redondeado"); si no hay, coincidencia parcial como red de seguridad.
-    let exact = automation
-        .create_matcher()
-        .from_ref(&root)
-        .name(name)
-        .depth(20)
-        .timeout(800)
-        .find_all()
-        .unwrap_or_default();
-    let candidates = if exact.is_empty() {
+    let fg = automation.element_from_handle(Handle::from(hwnd.0 as isize)).ok();
+    // Candidatos por raíz: nombre exacto primero ("Rectángulo" no choca con "Rectángulo
+    // redondeado"); si no hay, coincidencia parcial.
+    let gather = |root: &uiautomation::UIElement| -> Vec<uiautomation::UIElement> {
+        let exact = automation
+            .create_matcher()
+            .from_ref(root)
+            .name(name)
+            .depth(20)
+            .timeout(600)
+            .find_all()
+            .unwrap_or_default();
+        if !exact.is_empty() {
+            return exact;
+        }
         automation
             .create_matcher()
-            .from_ref(&root)
+            .from_ref(root)
             .contains_name(name)
             .depth(20)
-            .timeout(800)
+            .timeout(600)
             .find_all()
-            .map_err(|_| "uia_not_found")?
-    } else {
-        exact
+            .unwrap_or_default()
     };
+    let mut candidates = fg.as_ref().map(&gather).unwrap_or_default();
+    if candidates.is_empty() {
+        candidates = gather(&desktop);
+    }
     if candidates.is_empty() {
         return Err("uia_not_found");
     }
@@ -955,7 +1036,14 @@ fn invoke_uia(name: &str) -> Result<(), &'static str> {
     use uiautomation::patterns::{
         UIInvokePattern, UILegacyIAccessiblePattern, UISelectionItemPattern, UITogglePattern,
     };
+    // Preferir candidatos HABILITADOS (Paint deshabilita "Tamaño"/"Recortar" según el contexto:
+    // un control deshabilitado "se invoca" pero no hace nada → parecería roto).
+    let mut saw_disabled = false;
     for el in &candidates {
+        if !el.is_enabled().unwrap_or(true) {
+            saw_disabled = true;
+            continue;
+        }
         if let Ok(p) = el.get_pattern::<UIInvokePattern>() {
             return p.invoke().map_err(|_| "uia_invoke");
         }
@@ -966,11 +1054,17 @@ fn invoke_uia(name: &str) -> Result<(), &'static str> {
             return p.select().map_err(|_| "uia_select");
         }
     }
-    // Ningún candidato con patrón accionable: "default action" de MSAA (sin mover el ratón).
+    // Ningún candidato accionable habilitado: "default action" de MSAA (sin mover el ratón).
     for el in &candidates {
-        if let Ok(p) = el.get_pattern::<UILegacyIAccessiblePattern>() {
-            return p.do_default_action().map_err(|_| "uia_legacy");
+        if el.is_enabled().unwrap_or(true) {
+            if let Ok(p) = el.get_pattern::<UILegacyIAccessiblePattern>() {
+                return p.do_default_action().map_err(|_| "uia_legacy");
+            }
         }
+    }
+    // Solo había coincidencias deshabilitadas: avisar al teléfono en vez de no hacer nada.
+    if saw_disabled {
+        return Err("uia_disabled");
     }
     candidates[0].click().map_err(|_| "uia_click") // ponytail: último recurso; este sí mueve el ratón
 }
