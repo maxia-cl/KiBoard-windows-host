@@ -55,6 +55,10 @@ fn b(label: &str, icon: &str, action: &str) -> Button {
 fn bd(label: &str, icon: &str, action: &str) -> Button {
     Button { label: label.into(), icon: icon.into(), action: action.into(), danger: true, recommended: true }
 }
+/// Botón "extra": disponible en el perfil pero fuera de la selección recomendada por defecto.
+fn bx(label: &str, icon: &str, action: &str) -> Button {
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: false, recommended: false }
+}
 fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
     Profile { id: id.into(), matches: matches.iter().map(|s| s.to_string()).collect(), buttons }
 }
@@ -69,123 +73,179 @@ fn default_profiles() -> Vec<Profile> {
             b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
             b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
+            bx("Cortar", "cut", "ctrl+x"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("gdocs", &["google docs", "documentos de google"], vec![
             b("Negrita", "undo", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
             b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
+            bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("gdrive", &["google drive", "mi unidad"], vec![
             b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "new", "ctrl+t"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Nueva carpeta", "folder", "shift+f"), bx("Renombrar", "text", "n"),
         ]),
         profile("gmail", &["gmail"], vec![
             b("Redactar", "new", "c"), b("Buscar", "find", "/"),
             b("Responder", "redo", "r"), b("Archivar", "close", "e"),
+            bx("Resp. todos", "redo", "a"), bx("Reenviar", "send", "f"),
+            bx("Eliminar", "delete", "#"), bx("Destacar", "star", "s"), bx("Enviar", "send", "ctrl+enter"),
         ]),
         profile("youtube", &["youtube"], vec![
             b("Play/Pausa", "play", "k"), b("Silenciar", "mute", "m"),
             b("Pantalla completa", "video", "f"), b("Captura", "screenshot", "screenshot"),
+            bx("Adelante", "redo", "l"), bx("Atrás", "undo", "j"),
+            bx("Siguiente", "redo", "shift+n"), bx("Subtítulos", "text", "c"), bx("Teatro", "fullscreen", "t"),
         ]),
         // --- Office ---
         profile("word", &["word"], vec![
             b("Guardar", "save", "ctrl+s"), b("Negrita", "undo", "ctrl+b"),
             b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
+            bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("excel", &["excel"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
             b("Deshacer", "undo", "ctrl+z"), b("Rehacer", "redo", "ctrl+y"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Negrita", "bold", "ctrl+b"), bx("Cursiva", "italic", "ctrl+i"),
+            bx("Autosuma", "new", "alt+="), bx("Filtro", "find", "ctrl+shift+l"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("powerpoint", &["powerpoint"], vec![
             b("Presentar", "play", "f5"), b("Nueva diap.", "new", "ctrl+m"),
             b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Desde actual", "play", "shift+f5"), bx("Duplicar", "new", "ctrl+d"),
+            bx("Negrita", "bold", "ctrl+b"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("outlook", &["outlook"], vec![
             b("Nuevo correo", "new", "ctrl+n"), b("Responder", "redo", "ctrl+r"),
             b("Enviar", "play", "ctrl+enter"), b("Buscar", "find", "ctrl+e"),
+            bx("Resp. todos", "redo", "ctrl+shift+r"), bx("Reenviar", "send", "ctrl+f"),
+            bx("Eliminar", "delete", "ctrl+d"), bx("Calendario", "home", "ctrl+2"),
         ]),
         profile("acrobat", &["acrobat"], vec![
             b("Buscar", "find", "ctrl+f"), b("Imprimir", "save", "ctrl+p"),
             b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"),
+            bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
+            bx("Pant. completa", "fullscreen", "ctrl+l"),
         ]),
         // --- Creativas ---
         profile("photoshop", &["photoshop"], vec![
             b("Deshacer", "undo", "ctrl+z"), b("Pincel", "new", "b"), b("Mover", "tab", "v"),
             b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Texto", "text", "t"), bx("Borrador", "delete", "e"), bx("Recortar", "new", "c"),
+            bx("Zoom", "zoomin", "z"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         profile("illustrator", &["illustrator"], vec![
             b("Deshacer", "undo", "ctrl+z"), b("Selección", "tab", "v"),
             b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Pluma", "brush", "p"), bx("Texto", "text", "t"), bx("Rectángulo", "new", "m"),
+            bx("Zoom", "zoomin", "z"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         profile("premiere", &["premiere"], vec![
             b("Play/Pausa", "play", "k"), b("Cortar", "new", "c"), b("Selección", "tab", "v"),
             b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Entrada", "redo", "i"), bx("Salida", "undo", "o"), bx("Marcador", "star", "m"),
+            bx("Exportar", "upload", "ctrl+m"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         profile("figma", &["figma"], vec![
             b("Mover", "tab", "v"), b("Marco", "new", "f"), b("Comentar", "redo", "c"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Texto", "text", "t"), bx("Rectángulo", "new", "r"), bx("Lápiz", "brush", "p"),
+            bx("Duplicar", "new", "ctrl+d"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         // --- Comunicación / reuniones ---
         profile("slack", &["slack"], vec![
             b("Saltar a", "find", "ctrl+k"), b("Negrita", "undo", "ctrl+b"),
             b("Hilos", "redo", "ctrl+shift+t"), b("Copiar", "copy", "ctrl+c"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Buscar", "find", "ctrl+f"),
+            bx("Subir archivo", "upload", "ctrl+u"), bx("Editar último", "redo", "ctrl+up"),
         ]),
         profile("discord", &["discord"], vec![
             b("Silenciar", "mute", "ctrl+shift+m"), b("Audio", "video", "ctrl+shift+d"),
             b("Buscar", "find", "ctrl+f"),
+            bx("Sgte canal", "redo", "alt+down"), bx("Canal ant.", "undo", "alt+up"),
+            bx("Marcar leído", "close", "escape"),
         ]),
         profile("teams", &["teams"], vec![
             b("Silenciar", "mic", "ctrl+shift+m"), b("Cámara", "video", "ctrl+shift+o"),
             b("Compartir", "new", "ctrl+shift+e"), b("Colgar", "close", "ctrl+shift+h"),
+            bx("Levantar mano", "star", "ctrl+shift+k"), bx("Chat", "comment", "ctrl+2"),
+            bx("Aceptar", "play", "ctrl+shift+s"), bx("Rechazar", "close", "ctrl+shift+d"),
         ]),
         profile("zoom", &["zoom"], vec![
             b("Silenciar", "mic", "alt+a"), b("Vídeo", "video", "alt+v"),
             b("Compartir", "new", "alt+s"), b("Salir", "close", "alt+q"),
+            bx("Levantar mano", "star", "alt+y"), bx("Chat", "comment", "alt+h"),
+            bx("Grabar", "video", "alt+r"), bx("Pant. completa", "fullscreen", "alt+f"),
+            bx("Participantes", "apps", "alt+u"),
         ]),
         profile("notion", &["notion"], vec![
             b("Buscar", "find", "ctrl+p"), b("Negrita", "undo", "ctrl+b"),
             b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Cursiva", "italic", "ctrl+i"), bx("Nueva página", "new", "ctrl+n"),
+            bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         // --- Multimedia ---
         profile("spotify", &["spotify"], vec![
             b("Play/Pausa", "play", "space"), b("Siguiente", "redo", "ctrl+right"),
             b("Anterior", "undo", "ctrl+left"),
+            bx("+ Volumen", "vol", "ctrl+up"), bx("- Volumen", "vol", "ctrl+down"),
+            bx("Aleatorio", "refresh", "ctrl+s"), bx("Repetir", "redo", "ctrl+r"), bx("Buscar", "find", "ctrl+l"),
         ]),
         profile("vlc", &["vlc"], vec![
             b("Play/Pausa", "play", "space"), b("Pant. completa", "video", "f"),
             b("Silenciar", "mute", "m"), b("+ Volumen", "vol", "ctrl+up"), b("- Volumen", "vol", "ctrl+down"),
+            bx("Siguiente", "redo", "n"), bx("Anterior", "undo", "p"),
+            bx("Subtítulos", "text", "v"), bx("Captura", "screenshot", "shift+s"),
         ]),
         // --- Desarrollo / sistema ---
         profile("editor", &["code", "devenv", "visual studio"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
             b("Paleta", "new", "ctrl+shift+p"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Reemplazar", "redo", "ctrl+h"), bx("Comentar", "comment", "ctrl+/"),
+            bx("Terminal", "apps", "ctrl+`"), bx("Ir a línea", "find", "ctrl+g"),
+            bx("Formato", "text", "shift+alt+f"),
         ]),
         profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             b("Nueva pestaña", "new", "ctrl+shift+t"), b("Buscar", "find", "ctrl+f"),
+            bx("Cerrar pestaña", "close", "ctrl+shift+w"), bx("Dividir", "new", "alt+shift+d"),
+            bx("Nueva ventana", "new", "ctrl+shift+n"), bx("Panel sgte", "redo", "ctrl+tab"),
         ]),
         profile("notepadpp", &["notepad++"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
             b("Reemplazar", "redo", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Ir a línea", "find", "ctrl+g"), bx("Duplicar línea", "new", "ctrl+d"),
+            bx("Comentar", "comment", "ctrl+q"), bx("Imprimir", "print", "ctrl+p"), bx("Guardar todo", "save", "ctrl+shift+s"),
         ]),
         profile("explorer", &["explorador", "file explorer", "explorer"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             b("Nueva carpeta", "new", "ctrl+shift+n"), b("Renombrar", "redo", "f2"),
+            bx("Cortar", "cut", "ctrl+x"), bx("Atrás", "undo", "alt+left"),
+            bx("Subir nivel", "redo", "alt+up"), bx("Propiedades", "settings", "alt+enter"), bx("Buscar", "find", "ctrl+f"),
         ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
             b("Recargar", "refresh", "f5"), b("Buscar", "find", "ctrl+f"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Reabrir pestaña", "redo", "ctrl+shift+t"), bx("Favorito", "star", "ctrl+d"),
+            bx("Historial", "home", "ctrl+h"), bx("Descargas", "download", "ctrl+j"),
+            bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
         ]),
         // --- Fallback ---
         profile("generic", &[], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             b("Captura", "screenshot", "screenshot"),
+            bx("Cortar", "cut", "ctrl+x"), bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
+            bx("Guardar", "save", "ctrl+s"), bx("Buscar", "find", "ctrl+f"), bx("Imprimir", "print", "ctrl+p"),
         ]),
     ];
     // "Cerrar app" (rojo + confirmación) en TODOS los perfiles.
@@ -201,7 +261,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 3;
+const PROFILES_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
