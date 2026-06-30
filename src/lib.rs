@@ -279,11 +279,17 @@ fn default_profiles() -> Vec<Profile> {
             bx("Rehacer", "redo", "ctrl+y"), bx("Rectángulo", "new", "r"),
             bx("Círculo", "new", "c"), bx("Línea", "new", "l"), bx("Agrupar", "tab", "ctrl+g"),
         ]),
+        // Paint: la barra de herramientas no tiene atajos → se pulsan por UI Automation ("uia:<nombre>").
+        // Los nombres son por coincidencia parcial; ajustar si tu Paint usa otras etiquetas.
         profile("paint", &["paint"], vec![
-            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
-            b("Seleccionar todo", "tab", "ctrl+a"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-            bx("Rehacer", "redo", "ctrl+y"), bx("Recortar", "new", "ctrl+shift+x"),
-            bx("Cambiar tamaño", "tab", "ctrl+w"), bx("Propiedades", "settings", "ctrl+e"), bx("Imprimir", "print", "ctrl+p"),
+            b("Lápiz", "brush", "uia:Lápiz"), b("Pinceles", "brush", "uia:Pinceles"),
+            b("Relleno", "image", "uia:Rellenar"), b("Texto", "text", "uia:Texto"),
+            b("Borrador", "delete", "uia:Borrador"), b("Formas", "new", "uia:Formas"),
+            b("Selector", "find", "uia:Selector"), b("Seleccionar", "tab", "uia:Seleccionar"),
+            bx("Tamaño", "settings", "uia:Tamaño"),
+            bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
+            bx("Guardar", "save", "ctrl+s"), bx("Recortar", "new", "ctrl+shift+x"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
         ]),
         profile("davinci", &["davinci", "resolve"], vec![
             b("Play/Pausa", "play", "space"), b("Entrada", "redo", "i"), b("Salida", "undo", "o"),
@@ -412,7 +418,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 6;
+const PROFILES_VERSION: u32 = 7;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -665,7 +671,28 @@ fn run_action(action: &str) -> Result<(), &'static str> {
     if action == "screenshot" {
         return take_screenshot();
     }
+    // "uia:<nombre>" → pulsar un botón de la app en primer plano por su nombre de accesibilidad
+    // (para barras de herramientas sin atajo de teclado, p. ej. Paint).
+    if let Some(name) = action.strip_prefix("uia:") {
+        return invoke_uia(name);
+    }
     run_hotkey(action)
+}
+
+/// Localiza por nombre (coincidencia parcial) un elemento de la ventana en primer plano y lo clica.
+/// ponytail: busca desde el root y toma el primer match; basta porque la app objetivo está al frente.
+fn invoke_uia(name: &str) -> Result<(), &'static str> {
+    use uiautomation::UIAutomation;
+    let automation = UIAutomation::new().map_err(|_| "uia_init")?;
+    let root = automation.get_root_element().map_err(|_| "uia_root")?;
+    let matcher = automation
+        .create_matcher()
+        .from_ref(&root)
+        .contains_name(name)
+        .depth(20)
+        .timeout(800);
+    let el = matcher.find_first().map_err(|_| "uia_not_found")?;
+    el.click().map_err(|_| "uia_click")
 }
 
 /// Ejecuta un atajo como "ctrl+shift+p", "alt+F4", "ctrl+c".
