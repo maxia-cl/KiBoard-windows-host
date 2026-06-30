@@ -282,13 +282,13 @@ fn default_profiles() -> Vec<Profile> {
         // Paint: la barra de herramientas no tiene atajos → se pulsan por UI Automation ("uia:<nombre>").
         // Nombres reales de la barra (Paint Win11 ES) verificados con UIAutomation.
         profile("paint", &["paint"], vec![
-            b("Lápiz", "brush", "uia:Lápiz"), b("Relleno", "image", "uia:Relleno"),
-            b("Texto", "text", "uia:Texto"), b("Borrador", "delete", "uia:Borrador"),
-            b("Selector color", "find", "uia:Selector de colores"),
-            b("Rectángulo", "new", "uia:Rectángulo"), b("Elipse", "star", "uia:Elipse"),
-            b("Línea", "link", "uia:Línea"),
-            bx("Tamaño", "settings", "uia:Tamaño"), bx("Lupa", "zoomin", "uia:Lupa"),
-            bx("Recortar", "new", "uia:Recortar"), bx("Girar", "refresh", "uia:Girar"),
+            b("Lápiz", "pencil", "uia:Lápiz"), b("Relleno", "fill", "uia:Relleno"),
+            b("Texto", "text", "uia:Texto"), b("Borrador", "eraser", "uia:Borrador"),
+            b("Selector color", "colorpick", "uia:Selector de colores"),
+            b("Rectángulo", "rect", "uia:Rectángulo"), b("Elipse", "ellipse", "uia:Elipse"),
+            b("Línea", "line", "uia:Línea"),
+            bx("Tamaño", "lineweight", "uia:Tamaño"), bx("Lupa", "zoomin", "uia:Lupa"),
+            bx("Recortar", "crop", "uia:Recortar"), bx("Girar", "rotate", "uia:Girar"),
             bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
         ]),
@@ -419,7 +419,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 8;
+const PROFILES_VERSION: u32 = 9;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -683,30 +683,65 @@ fn run_action(action: &str) -> Result<(), &'static str> {
 /// Localiza por nombre (coincidencia parcial) un elemento de la ventana en primer plano y lo clica.
 /// ponytail: busca desde el root y toma el primer match; basta porque la app objetivo está al frente.
 fn invoke_uia(name: &str) -> Result<(), &'static str> {
+    use uiautomation::types::Handle;
     use uiautomation::UIAutomation;
     let automation = UIAutomation::new().map_err(|_| "uia_init")?;
-    let root = automation.get_root_element().map_err(|_| "uia_root")?;
-    // Nombre exacto primero (sin ambigüedad: "Rectángulo" no choca con "Rectángulo redondeado");
-    // si no, coincidencia parcial como red de seguridad.
+    // Acotar a la ventana en primer plano (no a todo el escritorio): el árbol es mucho
+    // menor → la búsqueda baja de ~2s a milisegundos. Si falla, caer al root del escritorio.
+    let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    let root = automation
+        .element_from_handle(Handle::from(hwnd.0 as isize))
+        .or_else(|_| automation.get_root_element())
+        .map_err(|_| "uia_root")?;
+    // TODOS los candidatos: nombre exacto primero ("Rectángulo" no choca con "Rectángulo
+    // redondeado"); si no hay, coincidencia parcial como red de seguridad.
     let exact = automation
         .create_matcher()
         .from_ref(&root)
         .name(name)
         .depth(20)
         .timeout(800)
-        .find_first();
-    let el = match exact {
-        Ok(e) => e,
-        Err(_) => automation
+        .find_all()
+        .unwrap_or_default();
+    let candidates = if exact.is_empty() {
+        automation
             .create_matcher()
             .from_ref(&root)
             .contains_name(name)
             .depth(20)
             .timeout(800)
-            .find_first()
-            .map_err(|_| "uia_not_found")?,
+            .find_all()
+            .map_err(|_| "uia_not_found")?
+    } else {
+        exact
     };
-    el.click().map_err(|_| "uia_click")
+    if candidates.is_empty() {
+        return Err("uia_not_found");
+    }
+    // Activar por patrón UIA, NO con un clic de ratón (el.click() movería el cursor).
+    // Varias apps duplican el nombre: un contenedor (GridViewItem, solo Legacy) y el botón
+    // real (Toggle/Invoke). Preferimos el candidato que exponga un patrón accionable.
+    use uiautomation::patterns::{
+        UIInvokePattern, UILegacyIAccessiblePattern, UISelectionItemPattern, UITogglePattern,
+    };
+    for el in &candidates {
+        if let Ok(p) = el.get_pattern::<UIInvokePattern>() {
+            return p.invoke().map_err(|_| "uia_invoke");
+        }
+        if let Ok(p) = el.get_pattern::<UITogglePattern>() {
+            return p.toggle().map_err(|_| "uia_toggle");
+        }
+        if let Ok(p) = el.get_pattern::<UISelectionItemPattern>() {
+            return p.select().map_err(|_| "uia_select");
+        }
+    }
+    // Ningún candidato con patrón accionable: "default action" de MSAA (sin mover el ratón).
+    for el in &candidates {
+        if let Ok(p) = el.get_pattern::<UILegacyIAccessiblePattern>() {
+            return p.do_default_action().map_err(|_| "uia_legacy");
+        }
+    }
+    candidates[0].click().map_err(|_| "uia_click") // ponytail: último recurso; este sí mueve el ratón
 }
 
 /// Ejecuta un atajo como "ctrl+shift+p", "alt+F4", "ctrl+c".
