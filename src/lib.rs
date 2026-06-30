@@ -570,6 +570,56 @@ fn default_profiles() -> Vec<Profile> {
             b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
             b("Silenciar", "mute", "m"),
         ]),
+        // --- Lote 6: cierre hacia ~100 (también antes de "browser") ---
+        profile("insomnia", &["insomnia"], vec![
+            b("Enviar", "send", "ctrl+enter"), b("Nuevo", "new", "ctrl+n"),
+            b("Buscar", "find", "ctrl+f"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("hulu", &["hulu"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("plex", &["plex"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("cubase", &["cubase"], vec![
+            b("Play/Pausa", "play", "space"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+shift+z"),
+        ]),
+        profile("camtasia", &["camtasia"], vec![
+            b("Play/Pausa", "play", "space"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+y"),
+        ]),
+        profile("filmora", &["filmora"], vec![
+            b("Play/Pausa", "play", "space"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Eliminar", "delete", "delete"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Rehacer", "redo", "ctrl+y"),
+        ]),
+        profile("vegas", &["vegas pro"], vec![
+            b("Play/Pausa", "play", "space"), b("Dividir", "cut", "s"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Rehacer", "redo", "ctrl+shift+z"),
+        ]),
+        profile("geany", &["geany"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Reemplazar", "replace", "ctrl+h"), b("Ejecutar", "play", "f5"),
+            b("Deshacer", "undo", "ctrl+z"),
+            bx("Comentar", "comment", "ctrl+e"), bx("Ir a línea", "find", "ctrl+l"),
+        ]),
+        profile("spyder", &["spyder"], vec![
+            b("Ejecutar", "play", "f5"), b("Guardar", "save", "ctrl+s"),
+            b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Comentar", "comment", "ctrl+1"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("autocad", &["autocad"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+y"), bx("Buscar", "find", "ctrl+f"),
+        ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
@@ -600,7 +650,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 13;
+const PROFILES_VERSION: u32 = 14;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
