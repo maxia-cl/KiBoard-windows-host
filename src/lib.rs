@@ -32,7 +32,12 @@ struct Button {
     /// Acción peligrosa: el móvil la pinta en rojo y pide confirmación.
     #[serde(default)]
     danger: bool,
+    /// Si está en la selección recomendada por defecto del perfil (el resto son extras disponibles).
+    #[serde(default = "yes")]
+    recommended: bool,
 }
+
+fn yes() -> bool { true }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Profile {
@@ -45,10 +50,10 @@ struct Profile {
 }
 
 fn b(label: &str, icon: &str, action: &str) -> Button {
-    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: false }
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: false, recommended: true }
 }
 fn bd(label: &str, icon: &str, action: &str) -> Button {
-    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: true }
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: true, recommended: true }
 }
 fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
     Profile { id: id.into(), matches: matches.iter().map(|s| s.to_string()).collect(), buttons }
@@ -282,7 +287,7 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
             p.buttons
                 .iter()
                 .enumerate()
-                .map(|(i, btn)| json!({ "id": i, "label": btn.label, "action": btn.action, "icon": btn.icon, "danger": btn.danger }))
+                .map(|(i, btn)| json!({ "id": i, "label": btn.label, "action": btn.action, "icon": btn.icon, "danger": btn.danger, "recommended": btn.recommended }))
                 .collect(),
         ),
         None => ("empty".into(), vec![]),
