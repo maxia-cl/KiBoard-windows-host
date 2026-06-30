@@ -295,7 +295,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Deshacer", "undo", "ctrl+z"), b("Cortar", "cut", "ctrl+x"), b("Copiar", "copy", "ctrl+c"),
             bx("Pegar", "paste", "ctrl+v"), bx("Silencio", "mute", "ctrl+l"), bx("Rehacer", "redo", "ctrl+y"),
         ]),
-        profile("jetbrains", &["intellij", "pycharm", "webstorm", "phpstorm", "rider", "goland", "clion", "datagrip"], vec![
+        profile("jetbrains", &["intellij", "pycharm", "webstorm", "phpstorm", "rider", "goland", "clion", "datagrip", "android studio"], vec![
             b("Buscar", "find", "ctrl+f"), b("Comentar", "comment", "ctrl+/"),
             b("Reformatear", "text", "ctrl+alt+l"), b("Ejecutar", "play", "shift+f10"),
             b("Deshacer", "undo", "ctrl+z"),
@@ -311,6 +311,76 @@ fn default_profiles() -> Vec<Profile> {
         profile("telegram", &["telegram"], vec![
             b("Buscar", "find", "ctrl+f"), b("Sgte chat", "redo", "alt+down"),
             b("Chat ant.", "undo", "alt+up"), b("Guardados", "star", "ctrl+0"),
+        ]),
+        // --- Lote 2: más apps/web hacia ~100 (también antes de "browser") ---
+        profile("gmeet", &["google meet", "meet -"], vec![
+            b("Silenciar", "mic", "ctrl+d"), b("Cámara", "video", "ctrl+e"),
+            b("Levantar mano", "star", "ctrl+alt+h"),
+            bx("Pant. completa", "fullscreen", "f"), bx("Captura", "screenshot", "screenshot"),
+        ]),
+        profile("trello", &["trello"], vec![
+            b("Buscar", "find", "/"), b("Filtrar", "find", "f"),
+            b("Tableros", "apps", "b"), b("Mis tarjetas", "star", "q"),
+            bx("Archivar", "close", "c"), bx("Etiquetas", "link", "l"),
+            bx("Vencimiento", "home", "d"), bx("Miembros", "new", "m"),
+        ]),
+        profile("todoist", &["todoist"], vec![
+            b("Añadir rápido", "new", "q"), b("Añadir tarea", "new", "a"),
+            bx("Deshacer", "undo", "ctrl+z"), bx("Sincronizar", "refresh", "ctrl+r"),
+        ]),
+        profile("linear", &["linear"], vec![
+            b("Crear", "new", "c"), b("Buscar", "find", "/"),
+            b("Asignar", "new", "a"), b("Estado", "redo", "s"),
+            bx("Prioridad", "star", "p"), bx("Etiqueta", "link", "l"), bx("Vencimiento", "home", "d"),
+        ]),
+        profile("jira", &["jira"], vec![
+            b("Crear", "new", "c"), b("Buscar", "find", "/"),
+            b("Asignar", "new", "a"), b("Editar", "redo", "e"),
+            bx("Comentar", "comment", "m"), bx("Asignarme", "star", "i"),
+        ]),
+        profile("miro", &["miro"], vec![
+            b("Texto", "text", "t"), b("Nota", "new", "s"),
+            b("Lápiz", "brush", "p"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Rectángulo", "new", "r"), bx("Marco", "new", "f"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("postman", &["postman"], vec![
+            b("Enviar", "send", "ctrl+enter"), b("Guardar", "save", "ctrl+s"),
+            b("Nuevo", "new", "ctrl+n"), b("Buscar", "find", "ctrl+f"),
+            bx("Nueva pestaña", "new", "ctrl+t"), bx("Cerrar pestaña", "close", "ctrl+w"),
+        ]),
+        profile("github", &["github"], vec![
+            b("Buscar", "find", "/"), b("Archivos", "find", "t"),
+            b("Ir a línea", "find", "l"), b("Cambiar rama", "tab", "w"),
+            bx("Editor web", "text", "."), bx("Blame", "comment", "b"),
+        ]),
+        profile("overleaf", &["overleaf"], vec![
+            b("Guardar/Compilar", "play", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+y"), bx("Comentar", "comment", "ctrl+/"),
+        ]),
+        profile("gkeep", &["google keep"], vec![
+            b("Nueva nota", "new", "c"), b("Buscar", "find", "/"),
+            b("Lista nueva", "new", "l"), b("Archivar", "close", "e"),
+            bx("Fijar", "star", "f"),
+        ]),
+        profile("aftereffects", &["after effects"], vec![
+            b("Vista previa", "play", "space"), b("Selección", "tab", "v"),
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            bx("Mano", "tab", "h"), bx("Zoom", "zoomin", "z"),
+            bx("Rehacer", "redo", "ctrl+shift+z"), bx("Copiar", "copy", "ctrl+c"),
+        ]),
+        profile("krita", &["krita"], vec![
+            b("Pincel", "brush", "b"), b("Borrador", "delete", "e"),
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Zoom +", "zoomin", "ctrl+="), bx("Rehacer", "redo", "ctrl+shift+z"),
+        ]),
+        profile("inkscape", &["inkscape"], vec![
+            b("Seleccionar", "tab", "s"), b("Lápiz", "brush", "p"),
+            b("Texto", "text", "t"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Rectángulo", "new", "r"), bx("Elipse", "new", "e"),
+            bx("Guardar", "save", "ctrl+s"), bx("Rehacer", "redo", "ctrl+y"),
         ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
@@ -342,7 +412,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 5;
+const PROFILES_VERSION: u32 = 6;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
