@@ -204,7 +204,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Subtítulos", "subtitles", "v"), bx("Captura", "screenshot", "shift+s"),
         ]),
         // --- Desarrollo / sistema ---
-        profile("editor", &["code", "devenv", "visual studio"], vec![
+        profile("editor", &["code", "devenv", "visual studio", "cursor"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
             b("Paleta", "new", "ctrl+shift+p"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
@@ -212,7 +212,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Terminal", "terminal", "ctrl+`"), bx("Ir a línea", "find", "ctrl+g"),
             bx("Formato", "format", "shift+alt+f"),
         ]),
-        profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt"], vec![
+        profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt", "warp"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             b("Nueva pestaña", "new", "ctrl+shift+t"), b("Buscar", "find", "ctrl+f"),
             bx("Cerrar pestaña", "close", "ctrl+shift+w"), bx("Dividir", "new", "alt+shift+d"),
@@ -513,6 +513,63 @@ fn default_profiles() -> Vec<Profile> {
             b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
             b("Silenciar", "mute", "m"),
         ]),
+        // --- Lote 5: más apps/web hacia ~100 (también antes de "browser") ---
+        profile("gslides", &["google slides", "presentaciones de google"], vec![
+            b("Presentar", "play", "ctrl+f5"), b("Nueva diap.", "new", "ctrl+m"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+y"), bx("Duplicar", "duplicate", "ctrl+d"), bx("Imprimir", "print", "ctrl+p"),
+        ]),
+        profile("evernote", &["evernote"], vec![
+            b("Nueva nota", "new", "ctrl+n"), b("Buscar", "find", "ctrl+shift+f"),
+            b("Negrita", "bold", "ctrl+b"), b("Cursiva", "italic", "ctrl+i"),
+            bx("Subrayado", "underline", "ctrl+u"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("joplin", &["joplin"], vec![
+            b("Nueva nota", "new", "ctrl+n"), b("Buscar", "find", "ctrl+f"),
+            b("Negrita", "bold", "ctrl+b"), b("Cursiva", "italic", "ctrl+i"),
+            bx("Enlace", "link", "ctrl+k"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("rstudio", &["rstudio"], vec![
+            b("Ejecutar", "play", "ctrl+enter"), b("Guardar", "save", "ctrl+s"),
+            b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Comentar", "comment", "ctrl+shift+c"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("visio", &["visio"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"), b("Buscar", "find", "ctrl+f"),
+            bx("Rehacer", "redo", "ctrl+y"), bx("Duplicar", "duplicate", "ctrl+d"),
+        ]),
+        profile("coreldraw", &["coreldraw"], vec![
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+shift+z"), bx("Duplicar", "duplicate", "ctrl+d"),
+        ]),
+        profile("kdenlive", &["kdenlive"], vec![
+            b("Play/Pausa", "play", "space"), b("Guardar", "save", "ctrl+s"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+shift+z"),
+        ]),
+        profile("scribus", &["scribus"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Rehacer", "redo", "ctrl+shift+z"), bx("Buscar", "find", "ctrl+f"),
+        ]),
+        profile("mpchc", &["mpc-hc", "mpc-be", "media player classic"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "alt+enter"),
+            b("+ Volumen", "vol", "up"), b("- Volumen", "vol", "down"),
+        ]),
+        profile("vimeo", &["vimeo"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("crunchyroll", &["crunchyroll"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("hbomax", &["hbo max", "hbomax", "max -"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
@@ -543,7 +600,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 12;
+const PROFILES_VERSION: u32 = 13;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
