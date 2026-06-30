@@ -389,6 +389,69 @@ fn default_profiles() -> Vec<Profile> {
             bx("Rectángulo", "rect", "r"), bx("Elipse", "ellipse", "e"),
             bx("Guardar", "save", "ctrl+s"), bx("Rehacer", "redo", "ctrl+y"),
         ]),
+        // --- Lote 3: más apps/web hacia ~100 (también antes de "browser") ---
+        profile("whatsapp", &["whatsapp"], vec![
+            b("Nuevo chat", "new", "ctrl+n"), b("Buscar", "find", "ctrl+f"),
+            b("Sgte chat", "next", "ctrl+shift+]"), b("Chat ant.", "prev", "ctrl+shift+["),
+            bx("Archivar", "archive", "ctrl+e"), bx("Silenciar", "mute", "ctrl+shift+m"),
+        ]),
+        profile("twitch", &["twitch"], vec![
+            b("Play/Pausa", "play", "space"), b("Silenciar", "mute", "m"),
+            b("Pant. completa", "fullscreen", "f"), b("Teatro", "video", "alt+t"),
+        ]),
+        profile("netflix", &["netflix"], vec![
+            b("Play/Pausa", "play", "space"), b("Pant. completa", "fullscreen", "f"),
+            b("Silenciar", "mute", "m"),
+        ]),
+        profile("xtwitter", &["twitter", "/ x"], vec![
+            b("Nuevo post", "new", "n"), b("Buscar", "find", "/"),
+            b("Me gusta", "star", "l"), b("Responder", "reply", "r"),
+            bx("Repost", "redo", "t"),
+        ]),
+        profile("eclipse", &["eclipse"], vec![
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Comentar", "comment", "ctrl+/"), b("Ejecutar", "play", "ctrl+f11"),
+            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Formato", "format", "ctrl+shift+f"), bx("Organizar imports", "redo", "ctrl+shift+o"),
+        ]),
+        profile("dbeaver", &["dbeaver"], vec![
+            b("Ejecutar", "play", "ctrl+enter"), b("Guardar", "save", "ctrl+s"),
+            b("Buscar", "find", "ctrl+f"), b("Deshacer", "undo", "ctrl+z"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            bx("Comentar", "comment", "ctrl+/"), bx("Formato", "format", "ctrl+shift+f"),
+        ]),
+        profile("unity", &["unity"], vec![
+            b("Reproducir", "play", "ctrl+p"), b("Mano", "hand", "q"),
+            b("Mover", "move", "w"), b("Rotar", "rotate", "e"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Duplicar", "duplicate", "ctrl+d"), bx("Buscar", "find", "ctrl+f"),
+        ]),
+        profile("godot", &["godot"], vec![
+            b("Ejecutar", "play", "f5"), b("Escena actual", "play", "f6"),
+            b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
+            b("Deshacer", "undo", "ctrl+z"),
+            bx("Comentar", "comment", "ctrl+k"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("capcut", &["capcut"], vec![
+            b("Play/Pausa", "play", "space"), b("Dividir", "cut", "ctrl+b"),
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            bx("Eliminar", "delete", "delete"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("affinity", &["affinity"], vec![
+            b("Mover", "move", "v"), b("Pincel", "brush", "b"), b("Borrador", "eraser", "e"),
+            b("Texto", "text", "t"), b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            bx("Recortar", "crop", "c"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
+        profile("ableton", &["ableton"], vec![
+            b("Play/Pausa", "play", "space"), b("Grabar", "record", "f9"),
+            b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Bucle", "repeat", "ctrl+l"),
+        ]),
+        profile("reaper", &["reaper"], vec![
+            b("Play/Pausa", "play", "space"), b("Grabar", "record", "ctrl+r"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Marcador", "star", "m"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+        ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
@@ -419,7 +482,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 10;
+const PROFILES_VERSION: u32 = 11;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
