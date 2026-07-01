@@ -293,6 +293,16 @@ fn default_profiles() -> Vec<Profile> {
             bx("Girar izq.", "rotate", "uia:Girar>>Girar 90º a la izquierda"),
             bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+            // Swatches de color: la paleta son ListItems UIA con nombre = color (SelectionItemPattern,
+            // ya soportado). El icono es el hex real → el móvil pinta el botón de ese color.
+            // Nombres EXACTOS de Paint Win11 ES (verificados en vivo); match exacto evita chocar con
+            // "Color 1: Negro"/"Color 2: Blanco".
+            bx("Negro", "#000000", "uia:Negro"), bx("Blanco", "#FFFFFF", "uia:Blanco"),
+            bx("Gris", "#7F7F7F", "uia:Gris"), bx("Rojo", "#ED1C24", "uia:Rojo"),
+            bx("Naranja", "#FF7F27", "uia:Naranja"), bx("Amarillo", "#FFF200", "uia:Amarillo"),
+            bx("Verde", "#22B14C", "uia:Verde"), bx("Turquesa", "#00A2E8", "uia:Turquesa"),
+            bx("Añil", "#3F48CC", "uia:Añil"), bx("Púrpura", "#A349A4", "uia:Púrpura"),
+            bx("Marrón", "#B97A57", "uia:Marrón"), bx("Rosa", "#FFAEC9", "uia:Rosa"),
         ]),
         profile("davinci", &["davinci", "resolve"], vec![
             b("Play/Pausa", "play", "space"), b("Entrada", "redo", "i"), b("Salida", "undo", "o"),
@@ -652,7 +662,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 16;
+const PROFILES_VERSION: u32 = 17;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
