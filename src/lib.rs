@@ -8,7 +8,7 @@ use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
@@ -1362,6 +1362,21 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip(HOST_NAME)
                 .menu(&menu)
+                // Click primario → abre la ventana (QR) directo; el menú queda solo en el secundario.
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "pair" => {
                         if let Some(w) = app.get_webview_window("main") {
