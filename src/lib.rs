@@ -1805,6 +1805,40 @@ fn save_profiles(profiles: Vec<Profile>) -> serde_json::Value {
     json!({ "ok": true })
 }
 
+/// ¿Hay un proceso cuyo nombre esté en `names` (comparación sin distinción de mayúsculas)?
+/// Sirve para distinguir "OBS cerrado" de "OBS abierto pero con el WebSocket apagado".
+fn process_running(names: &[&str]) -> bool {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return false;
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut found = false;
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let exe = String::from_utf16_lossy(&entry.szExeFile[..end]).to_lowercase();
+                if names.iter().any(|n| exe == n.to_lowercase()) {
+                    found = true;
+                    break;
+                }
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snap);
+        found
+    }
+}
+
 /// Estado de la integración OBS para la UI del host.
 #[tauri::command]
 fn obs_info() -> serde_json::Value {
@@ -1813,7 +1847,9 @@ fn obs_info() -> serde_json::Value {
         (st.connected, st.scenes.len())
     };
     let password_set = !config().lock().unwrap().obs_password.is_empty();
-    json!({ "connected": connected, "scenes": scenes, "passwordSet": password_set })
+    // running sin connected = OBS abierto con el WebSocket apagado → el caso a guiar.
+    let running = process_running(&["obs64.exe", "obs32.exe"]);
+    json!({ "connected": connected, "scenes": scenes, "passwordSet": password_set, "running": running })
 }
 
 /// Guarda la contraseña del WebSocket de OBS; el cliente la usa en el próximo (re)intento (≤5s).
