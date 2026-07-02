@@ -640,6 +640,18 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Rehacer", "redo", "ctrl+y"), bx("Buscar", "find", "ctrl+f"),
         ]),
+        // --- Gaming / streaming ---
+        // OBS por websocket (obs:): funciona aunque el juego esté en primer plano, con estado en
+        // vivo en el botón. Mientras OBS graba o transmite, este perfil se pinea (ver layout_for)
+        // y se le añaden las escenas del usuario como botones.
+        profile("obs", &["obs studio", "obs64"], vec![
+            b("Grabar", "record", "obs:record"), bd("Directo", "stream", "obs:stream"),
+            b("Mic", "mic", "obs:mic"), b("Clip", "clip", "obs:replay"),
+            bx("Buffer clips", "clip", "obs:replaybuffer"),
+        ]),
+        profile("steam", &["steam"], vec![
+            b("Overlay", "apps", "shift+tab"), b("Captura", "screenshot", "f12"),
+        ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
@@ -655,6 +667,9 @@ fn default_profiles() -> Vec<Profile> {
             b("Vol -", "voldown", "voldown"), b("Silencio", "mute", "volmute"),
             b("Captura", "screenshot", "screenshot"),
             bx("Siguiente", "next", "nexttrack"), bx("Anterior", "prev", "prevtrack"),
+            // Game Bar de Windows: atajos FIJOS del sistema, valen dentro de cualquier juego.
+            bx("Clip 30s", "clip", "win+alt+g"), bx("Grabar juego", "record", "win+alt+r"),
+            bx("Game Bar", "apps", "win+g"),
             bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Cortar", "cut", "ctrl+x"),
             bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Buscar", "find", "ctrl+f"), bx("Imprimir", "print", "ctrl+p"),
@@ -673,7 +688,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 19;
+const PROFILES_VERSION: u32 = 20;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -684,6 +699,9 @@ struct Config {
     profiles: Vec<Profile>,
     #[serde(default)]
     profiles_version: u32,
+    /// Contraseña del servidor WebSocket de OBS (vacía si el server no tiene auth).
+    #[serde(default)]
+    obs_password: String,
 }
 
 impl Config {
@@ -747,13 +765,19 @@ fn now_ts() -> u64 {
 fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
     // Elegir perfil y COPIAR sus botones (id, label, action, icon, danger, recommended); soltar el
     // lock antes de consultar UIA (lento) para no bloquear al resto.
+    // Estado de OBS: si está grabando o en directo, el perfil "obs" se PINEA aunque la ventana al
+    // frente sea el juego (los atajos por título no ven a OBS detrás del juego en pantalla completa).
+    let obs = obs_state().lock().unwrap().clone();
+    let obs_live = obs.connected && (obs.recording || obs.streaming);
     let (profile_id, raw): (String, Vec<(usize, String, String, String, bool, bool)>) = {
         let cfg = config().lock().unwrap();
         let hay = format!("{app} {title}").to_lowercase();
-        let profile = cfg
-            .profiles
-            .iter()
-            .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
+        let profile = if obs_live { cfg.profiles.iter().find(|p| p.id == "obs") } else { None }
+            .or_else(|| {
+                cfg.profiles
+                    .iter()
+                    .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
+            })
             .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
             .or_else(|| cfg.profiles.last());
         match profile {
@@ -773,13 +797,36 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
     // Ocultar los botones uia cuyo control esté deshabilitado ahora (estado dinámico de la app:
     // p. ej. "Recortar" solo se habilita con una selección hecha).
     let disabled = uia_disabled_actions(&raw);
-    let buttons: Vec<_> = raw
+    let mut buttons: Vec<_> = raw
         .iter()
         .filter(|(_, _, action, _, _, _)| !disabled.contains(action))
         .map(|(i, label, action, icon, danger, rec)| {
-            json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec })
+            let mut j = json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec });
+            // Estado en vivo para los botones OBS (REC encendido, mic muteado…).
+            if obs.connected {
+                let on = match action.as_str() {
+                    "obs:record" => Some(obs.recording),
+                    "obs:stream" => Some(obs.streaming),
+                    "obs:mic" => Some(obs.mic_muted),
+                    "obs:replaybuffer" => Some(obs.replay_active),
+                    _ => None,
+                };
+                if let Some(on) = on {
+                    j["on"] = json!(on);
+                }
+            }
+            j
         })
         .collect();
+    // Botones de escena autogenerados desde OBS: el usuario ve SUS escenas sin configurar nada.
+    if profile_id == "obs" && obs.connected {
+        for (i, s) in obs.scenes.iter().enumerate() {
+            buttons.push(json!({
+                "id": 1000 + i, "label": s, "action": format!("obs:scene:{s}"), "icon": "scene",
+                "danger": false, "recommended": true, "on": *s == obs.current_scene
+            }));
+        }
+    }
     json!({
         "v": 1, "type": "layout", "profileId": profile_id,
         "appName": app, "appIcon": icon_b64, "buttons": buttons
@@ -1001,6 +1048,240 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// OBS (obs-websocket v5, integrado en OBS ≥ 28, puerto 4455)
+// ---------------------------------------------------------------------------
+// Cliente permanente con reconexión. El estado (grabando/directo/mic/escenas) vive en OBS_STATE;
+// layout_for lo lee en cada sondeo (500ms) → los botones del móvil muestran estado en vivo sin
+// añadir mensajes nuevos al protocolo host↔móvil.
+// ponytail: puerto fijo 4455 (default de OBS); hacerlo configurable si algún usuario lo pide.
+
+#[derive(Default, Clone)]
+struct ObsState {
+    connected: bool,
+    recording: bool,
+    streaming: bool,
+    replay_active: bool, // buffer de repetición activo
+    mic_muted: bool,
+    mic_name: String, // primer mic de GetSpecialInputs
+    scenes: Vec<String>,
+    current_scene: String,
+}
+
+static OBS_STATE: OnceLock<Mutex<ObsState>> = OnceLock::new();
+fn obs_state() -> &'static Mutex<ObsState> {
+    OBS_STATE.get_or_init(|| Mutex::new(ObsState::default()))
+}
+static OBS_TX: OnceLock<tokio::sync::mpsc::UnboundedSender<String>> = OnceLock::new();
+static OBS_REQ_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Mapea una acción "obs:<cmd>" al request obs-websocket. Pura para poder testearla.
+fn obs_request_for(cmd: &str, mic_name: &str) -> Result<(&'static str, serde_json::Value), &'static str> {
+    match cmd {
+        "record" => Ok(("ToggleRecord", json!({}))),
+        "stream" => Ok(("ToggleStream", json!({}))),
+        "replay" => Ok(("SaveReplayBuffer", json!({}))),
+        "replaybuffer" => Ok(("ToggleReplayBuffer", json!({}))),
+        "mic" => {
+            if mic_name.is_empty() {
+                return Err("obs_sin_mic");
+            }
+            Ok(("ToggleInputMute", json!({ "inputName": mic_name })))
+        }
+        s => match s.strip_prefix("scene:") {
+            Some(name) if !name.is_empty() => {
+                Ok(("SetCurrentProgramScene", json!({ "sceneName": name })))
+            }
+            _ => Err("obs_accion_desconocida"),
+        },
+    }
+}
+
+/// Encola un request hacia OBS (fuego y olvido: el resultado vuelve como evento de estado).
+fn obs_send(request_type: &str, data: serde_json::Value) -> Result<(), &'static str> {
+    if !obs_state().lock().unwrap().connected {
+        return Err("obs_desconectado");
+    }
+    let id = OBS_REQ_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let msg = json!({
+        "op": 6,
+        "d": { "requestType": request_type, "requestId": id.to_string(), "requestData": data }
+    })
+    .to_string();
+    OBS_TX.get().ok_or("obs_desconectado")?.send(msg).map_err(|_| "obs_desconectado")
+}
+
+fn obs_action(cmd: &str) -> Result<(), &'static str> {
+    let mic = obs_state().lock().unwrap().mic_name.clone();
+    let (rtype, data) = obs_request_for(cmd, &mic)?;
+    obs_send(rtype, data)
+}
+
+/// Auth v5: b64(sha256(b64(sha256(password+salt)) + challenge)).
+fn obs_auth(password: &str, salt: &str, challenge: &str) -> String {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let secret = b64.encode(Sha256::digest(format!("{password}{salt}")));
+    b64.encode(Sha256::digest(format!("{secret}{challenge}")))
+}
+
+/// Bucle permanente: conecta, sirve, y al caerse limpia el estado y reintenta a los 5s.
+async fn obs_client_loop(mut rx: tokio::sync::mpsc::UnboundedReceiver<String>) {
+    loop {
+        // Descartar comandos encolados mientras estuvimos caídos (evita toggles fantasma al volver).
+        while rx.try_recv().is_ok() {}
+        let _ = obs_serve(&mut rx).await;
+        *obs_state().lock().unwrap() = ObsState::default();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+async fn obs_serve(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Result<(), ()> {
+    use futures_util::{SinkExt, StreamExt};
+    let (ws, _) = tokio_tungstenite::connect_async("ws://127.0.0.1:4455")
+        .await
+        .map_err(|_| ())?;
+    let (mut write, mut read) = ws.split();
+
+    // Hello (op 0) → Identify (op 1) con auth si el server la exige.
+    let hello = obs_next_json(&mut read).await.ok_or(())?;
+    let mut identify = json!({
+        "rpcVersion": 1,
+        // Scenes(4) | Inputs(8) | Outputs(64): escenas, mute de mic, estado de grabación/directo.
+        "eventSubscriptions": 76
+    });
+    if let Some(auth) = hello["d"].get("authentication") {
+        let password = config().lock().unwrap().obs_password.clone();
+        let salt = auth["salt"].as_str().unwrap_or("");
+        let challenge = auth["challenge"].as_str().unwrap_or("");
+        identify["authentication"] = json!(obs_auth(&password, salt, challenge));
+    }
+    write
+        .send(Message::text(json!({"op": 1, "d": identify}).to_string()))
+        .await
+        .map_err(|_| ())?;
+    // Identified (op 2); con contraseña mala OBS cierra el socket y caemos al retry.
+    let identified = obs_next_json(&mut read).await.ok_or(())?;
+    if identified["op"].as_i64() != Some(2) {
+        return Err(());
+    }
+    obs_state().lock().unwrap().connected = true;
+
+    // Estado inicial (las respuestas op 7 lo van rellenando).
+    for req in ["GetSceneList", "GetSpecialInputs", "GetRecordStatus", "GetStreamStatus", "GetReplayBufferStatus"] {
+        let _ = obs_send(req, json!({}));
+    }
+
+    loop {
+        tokio::select! {
+            cmd = rx.recv() => {
+                let Some(cmd) = cmd else { return Err(()) };
+                write.send(Message::text(cmd)).await.map_err(|_| ())?;
+            }
+            msg = read.next() => {
+                let Some(Ok(msg)) = msg else { return Err(()) };
+                if msg.is_close() { return Err(()); }
+                if !msg.is_text() { continue; }
+                let txt = msg.into_text().map(|t| t.to_string()).unwrap_or_default();
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) {
+                    obs_apply(&v);
+                }
+            }
+        }
+    }
+}
+
+async fn obs_next_json<S>(read: &mut S) -> Option<serde_json::Value>
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    use futures_util::StreamExt;
+    loop {
+        let msg = read.next().await?.ok()?;
+        if msg.is_close() {
+            return None;
+        }
+        if !msg.is_text() {
+            continue;
+        }
+        let txt = msg.into_text().ok()?.to_string();
+        if let Ok(v) = serde_json::from_str(&txt) {
+            return Some(v);
+        }
+    }
+}
+
+/// Aplica un evento (op 5) o respuesta (op 7) de OBS al estado compartido.
+fn obs_apply(v: &serde_json::Value) {
+    // Request de seguimiento a enviar DESPUÉS de soltar el lock (obs_send también lo toma).
+    let mut followup: Option<(&'static str, serde_json::Value)> = None;
+    {
+        let mut st = obs_state().lock().unwrap();
+        match v["op"].as_i64() {
+            Some(5) => {
+                let d = &v["d"]["eventData"];
+                match v["d"]["eventType"].as_str().unwrap_or("") {
+                    "RecordStateChanged" => st.recording = d["outputActive"].as_bool().unwrap_or(st.recording),
+                    "StreamStateChanged" => st.streaming = d["outputActive"].as_bool().unwrap_or(st.streaming),
+                    "ReplayBufferStateChanged" => st.replay_active = d["outputActive"].as_bool().unwrap_or(st.replay_active),
+                    "InputMuteStateChanged" => {
+                        if d["inputName"].as_str() == Some(st.mic_name.as_str()) {
+                            st.mic_muted = d["inputMuted"].as_bool().unwrap_or(st.mic_muted);
+                        }
+                    }
+                    "CurrentProgramSceneChanged" => {
+                        st.current_scene = d["sceneName"].as_str().unwrap_or("").to_string();
+                    }
+                    "SceneListChanged" => st.scenes = obs_scene_names(&d["scenes"]),
+                    _ => {}
+                }
+            }
+            Some(7) => {
+                let d = &v["d"]["responseData"];
+                match v["d"]["requestType"].as_str().unwrap_or("") {
+                    "GetSceneList" => {
+                        st.scenes = obs_scene_names(&d["scenes"]);
+                        st.current_scene = d["currentProgramSceneName"].as_str().unwrap_or("").to_string();
+                    }
+                    "GetSpecialInputs" => {
+                        st.mic_name = ["mic1", "mic2", "mic3", "mic4"]
+                            .iter()
+                            .find_map(|k| d[k].as_str().filter(|s| !s.is_empty()))
+                            .unwrap_or("")
+                            .to_string();
+                        if !st.mic_name.is_empty() {
+                            followup = Some(("GetInputMute", json!({ "inputName": st.mic_name })));
+                        }
+                    }
+                    "GetRecordStatus" => st.recording = d["outputActive"].as_bool().unwrap_or(false),
+                    "GetStreamStatus" => st.streaming = d["outputActive"].as_bool().unwrap_or(false),
+                    "GetReplayBufferStatus" => st.replay_active = d["outputActive"].as_bool().unwrap_or(false),
+                    "GetInputMute" => st.mic_muted = d["inputMuted"].as_bool().unwrap_or(false),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some((rtype, data)) = followup {
+        let _ = obs_send(rtype, data);
+    }
+}
+
+/// GetSceneList devuelve las escenas de abajo hacia arriba → invertir para el orden de la UI de OBS.
+fn obs_scene_names(scenes: &serde_json::Value) -> Vec<String> {
+    scenes
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .rev()
+                .filter_map(|s| s["sceneName"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
 // Ejecución de acciones (atajos arbitrarios) sobre la ventana en primer plano
 // ---------------------------------------------------------------------------
 
@@ -1036,6 +1317,10 @@ fn run_step(step: &str) -> Result<(), &'static str> {
     }
     if let Some(name) = step.strip_prefix("uia:") {
         return invoke_uia(name.trim());
+    }
+    // "obs:<cmd>" → request al obs-websocket (funciona con el juego en primer plano).
+    if let Some(cmd) = step.strip_prefix("obs:") {
+        return obs_action(cmd);
     }
     // "type:<texto>" → escribe el texto literal (snippets: respuestas enlatadas, emails, fórmulas).
     if let Some(text) = step.strip_prefix("type:") {
@@ -1340,6 +1625,26 @@ fn save_profiles(profiles: Vec<Profile>) -> serde_json::Value {
     json!({ "ok": true })
 }
 
+/// Estado de la integración OBS para la UI del host.
+#[tauri::command]
+fn obs_info() -> serde_json::Value {
+    let (connected, scenes) = {
+        let st = obs_state().lock().unwrap();
+        (st.connected, st.scenes.len())
+    };
+    let password_set = !config().lock().unwrap().obs_password.is_empty();
+    json!({ "connected": connected, "scenes": scenes, "passwordSet": password_set })
+}
+
+/// Guarda la contraseña del WebSocket de OBS; el cliente la usa en el próximo (re)intento (≤5s).
+#[tauri::command]
+fn set_obs_password(password: String) -> serde_json::Value {
+    let mut cfg = config().lock().unwrap();
+    cfg.obs_password = password.trim().to_string();
+    cfg.save();
+    json!({ "ok": true })
+}
+
 /// QR de un perfil para compartirlo: otro KiBoard lo escanea desde el móvil y lo importa.
 #[tauri::command]
 fn profile_qr(profile: Profile) -> String {
@@ -1366,7 +1671,7 @@ fn qr_svg(data: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_key;
+    use super::{obs_request_for, parse_key};
 
     #[test]
     fn parsea_teclas() {
@@ -1379,6 +1684,22 @@ mod tests {
         for t in ["volup", "voldown", "volmute", "playpause", "nexttrack", "prevtrack"] {
             assert!(parse_key(t).is_ok(), "token multimedia {t}");
         }
+    }
+
+    #[test]
+    fn mapea_acciones_obs() {
+        assert_eq!(obs_request_for("record", "").unwrap().0, "ToggleRecord");
+        assert_eq!(obs_request_for("stream", "").unwrap().0, "ToggleStream");
+        assert_eq!(obs_request_for("replay", "").unwrap().0, "SaveReplayBuffer");
+        let (t, d) = obs_request_for("scene:Gameplay", "").unwrap();
+        assert_eq!(t, "SetCurrentProgramScene");
+        assert_eq!(d["sceneName"], "Gameplay");
+        let (t, d) = obs_request_for("mic", "Mic/Aux").unwrap();
+        assert_eq!(t, "ToggleInputMute");
+        assert_eq!(d["inputName"], "Mic/Aux");
+        assert!(obs_request_for("mic", "").is_err()); // sin mic detectado
+        assert!(obs_request_for("scene:", "").is_err());
+        assert!(obs_request_for("nope", "").is_err());
     }
 }
 
@@ -1402,7 +1723,9 @@ pub fn run() {
             unpair_all,
             get_profiles,
             save_profiles,
-            profile_qr
+            profile_qr,
+            obs_info,
+            set_obs_password
         ])
         // La X oculta la ventana (la app vive en el tray); sin esto la destruye y sale la app.
         .on_window_event(|window, event| {
@@ -1414,6 +1737,9 @@ pub fn run() {
         .setup(|app| {
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
+            let (obs_tx, obs_rx) = tokio::sync::mpsc::unbounded_channel();
+            let _ = OBS_TX.set(obs_tx);
+            tauri::async_runtime::spawn(obs_client_loop(obs_rx));
 
             // Arranca con Windows (idempotente).
             let _ = app.autolaunch().enable();

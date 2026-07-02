@@ -1071,6 +1071,7 @@ name = "desktop"
 version = "0.1.5"
 dependencies = [
  "active-win-pos-rs",
+ "base64 0.22.1",
  "dirs 5.0.1",
  "enigo",
  "futures-util",
@@ -1079,6 +1080,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
