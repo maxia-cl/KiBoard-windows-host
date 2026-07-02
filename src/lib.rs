@@ -115,11 +115,13 @@ fn default_profiles() -> Vec<Profile> {
             bx("Autosuma", "sum", "alt+="), bx("Filtro", "filter", "ctrl+shift+l"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("powerpoint", &["powerpoint"], vec![
-            b("Presentar", "play", "f5"), b("Nueva diap.", "new", "ctrl+m"),
+            // Pack presentador: el uso remoto #1 — pasar diapositivas desde el atril.
+            b("Siguiente", "next", "right"), b("Anterior", "prev", "left"),
+            b("Presentar", "play", "f5"), b("Negro", "dark", "b"),
             b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
-            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-            bx("Desde actual", "play", "shift+f5"), bx("Duplicar", "duplicate", "ctrl+d"),
-            bx("Negrita", "bold", "ctrl+b"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Blanco", "light", "w"), bx("Desde actual", "play", "shift+f5"),
+            bx("Nueva diap.", "new", "ctrl+m"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
+            bx("Duplicar", "duplicate", "ctrl+d"), bx("Negrita", "bold", "ctrl+b"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("outlook", &["outlook"], vec![
             b("Nuevo correo", "new", "ctrl+n"), b("Responder", "reply", "ctrl+r"),
@@ -149,7 +151,7 @@ fn default_profiles() -> Vec<Profile> {
         profile("premiere", &["premiere"], vec![
             b("Play/Pausa", "play", "k"), b("Cortar", "cut", "c"), b("Selección", "cursor", "v"),
             b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
-            bx("Entrada", "redo", "i"), bx("Salida", "undo", "o"), bx("Marcador", "star", "m"),
+            bx("Entrada", "login", "i"), bx("Salida", "logout", "o"), bx("Marcador", "star", "m"),
             bx("Exportar", "upload", "ctrl+m"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         profile("figma", &["figma"], vec![
@@ -168,7 +170,7 @@ fn default_profiles() -> Vec<Profile> {
         profile("discord", &["discord"], vec![
             b("Silenciar", "mute", "ctrl+shift+m"), b("Audio", "video", "ctrl+shift+d"),
             b("Buscar", "find", "ctrl+f"),
-            bx("Sgte canal", "redo", "alt+down"), bx("Canal ant.", "undo", "alt+up"),
+            bx("Sgte canal", "next", "alt+down"), bx("Canal ant.", "prev", "alt+up"),
             bx("Marcar leído", "close", "escape"),
         ]),
         profile("teams", &["teams"], vec![
@@ -213,14 +215,16 @@ fn default_profiles() -> Vec<Profile> {
             bx("Formato", "format", "shift+alt+f"),
         ]),
         profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt", "warp"], vec![
-            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            // OJO: ctrl+c en consola es SIGINT (mata el proceso). Windows Terminal/PowerShell
+            // aceptan ctrl+shift+c/v para el portapapeles.
+            b("Copiar", "copy", "ctrl+shift+c"), b("Pegar", "paste", "ctrl+shift+v"),
             b("Nueva pestaña", "new", "ctrl+shift+t"), b("Buscar", "find", "ctrl+f"),
             bx("Cerrar pestaña", "close", "ctrl+shift+w"), bx("Dividir", "new", "alt+shift+d"),
             bx("Nueva ventana", "new", "ctrl+shift+n"), bx("Panel sgte", "redo", "ctrl+tab"),
         ]),
         profile("notepadpp", &["notepad++"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
-            b("Reemplazar", "redo", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
+            b("Reemplazar", "replace", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Ir a línea", "find", "ctrl+g"), bx("Duplicar línea", "new", "ctrl+d"),
             bx("Comentar", "comment", "ctrl+q"), bx("Imprimir", "print", "ctrl+p"), bx("Guardar todo", "save", "ctrl+shift+s"),
@@ -302,7 +306,7 @@ fn default_profiles() -> Vec<Profile> {
               Púrpura=A349A4;Marrón=B97A57;Rosa=FFAEC9"),
         ]),
         profile("davinci", &["davinci", "resolve"], vec![
-            b("Play/Pausa", "play", "space"), b("Entrada", "redo", "i"), b("Salida", "undo", "o"),
+            b("Play/Pausa", "play", "space"), b("Entrada", "login", "i"), b("Salida", "logout", "o"),
             b("Cortar", "cut", "ctrl+b"), b("Deshacer", "undo", "ctrl+z"),
             bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
@@ -476,8 +480,11 @@ fn default_profiles() -> Vec<Profile> {
             bx("Negrita", "bold", "ctrl+b"), bx("Cursiva", "italic", "ctrl+i"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("loimpress", &["libreoffice impress"], vec![
-            b("Presentar", "play", "f5"), b("Guardar", "save", "ctrl+s"),
-            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            // Pack presentador (en modo presentación: flechas pasan diapositiva, b = negro, w = blanco).
+            b("Siguiente", "next", "right"), b("Anterior", "prev", "left"),
+            b("Presentar", "play", "f5"), b("Negro", "dark", "b"),
+            b("Guardar", "save", "ctrl+s"), b("Deshacer", "undo", "ctrl+z"),
+            bx("Blanco", "light", "w"), bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
             bx("Negrita", "bold", "ctrl+b"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("notepad", &["notepad"], vec![
@@ -524,8 +531,12 @@ fn default_profiles() -> Vec<Profile> {
         ]),
         // --- Lote 5: más apps/web hacia ~100 (también antes de "browser") ---
         profile("gslides", &["google slides", "presentaciones de google"], vec![
-            b("Presentar", "play", "ctrl+f5"), b("Nueva diap.", "new", "ctrl+m"),
-            b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            // Pack presentador (en modo presentación las flechas pasan diapositiva; b = negro, w = blanco).
+            b("Siguiente", "next", "right"), b("Anterior", "prev", "left"),
+            b("Presentar", "play", "ctrl+f5"), b("Negro", "dark", "b"),
+            b("Deshacer", "undo", "ctrl+z"),
+            bx("Blanco", "light", "w"), bx("Nueva diap.", "new", "ctrl+m"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
             bx("Rehacer", "redo", "ctrl+y"), bx("Duplicar", "duplicate", "ctrl+d"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("evernote", &["evernote"], vec![
@@ -638,11 +649,14 @@ fn default_profiles() -> Vec<Profile> {
             bx("Historial", "history", "ctrl+h"), bx("Descargas", "download", "ctrl+j"),
             bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
         ]),
-        // --- Fallback ---
+        // --- Fallback: control remoto de sofá (teclas multimedia del sistema, valen en cualquier app) ---
         profile("generic", &[], vec![
-            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Play/Pausa", "play", "playpause"), b("Vol +", "vol", "volup"),
+            b("Vol -", "voldown", "voldown"), b("Silencio", "mute", "volmute"),
             b("Captura", "screenshot", "screenshot"),
-            bx("Cortar", "cut", "ctrl+x"), bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
+            bx("Siguiente", "next", "nexttrack"), bx("Anterior", "prev", "prevtrack"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Cortar", "cut", "ctrl+x"),
+            bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Buscar", "find", "ctrl+f"), bx("Imprimir", "print", "ctrl+p"),
         ]),
     ];
@@ -659,7 +673,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 18;
+const PROFILES_VERSION: u32 = 19;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -960,6 +974,20 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
             }
             list_windows_json()
         }
+        // Perfil escaneado de un QR "kbprofile:" en otro KiBoard: se añade al catálogo local.
+        Some("import_profile") => {
+            if !*authed {
+                return json!({"v":1,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
+            }
+            let Ok(p) = serde_json::from_value::<Profile>(val["profile"].clone()) else {
+                return json!({"v":1,"type":"command_result","ok":false,"error":"bad_profile"}).to_string();
+            };
+            let mut cfg = config().lock().unwrap();
+            cfg.profiles.retain(|q| q.id != p.id); // re-importar el mismo id lo reemplaza
+            cfg.profiles.insert(0, p); // al frente: gana el matching sobre los genéricos
+            cfg.save();
+            json!({"v":1,"type":"command_result","ok":true,"imported":true}).to_string()
+        }
         Some("focus_window") => {
             if !*authed {
                 return json!({"v":1,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
@@ -977,12 +1005,9 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
 // ---------------------------------------------------------------------------
 
 fn run_action(action: &str) -> Result<(), &'static str> {
-    if action == "screenshot" {
-        return take_screenshot();
-    }
     // "uia:<nombre>" → pulsar un botón de la app en primer plano por su nombre de accesibilidad
     // (para barras de herramientas sin atajo de teclado, p. ej. Paint).
-    // Encadenable con ">>" para abrir un menú/flyout y luego elegir una opción:
+    // Si la acción EMPIEZA por "uia:", toda la cadena ">>" son pasos UIA (menú/flyout → opción):
     // "uia:Girar>>Girar 90° a la derecha" → abre "Girar", espera, clica la opción.
     if let Some(chain) = action.strip_prefix("uia:") {
         for (i, step) in chain.split(">>").enumerate() {
@@ -993,7 +1018,32 @@ fn run_action(action: &str) -> Result<(), &'static str> {
         }
         return Ok(());
     }
-    run_hotkey(action)
+    // Macro general: pasos separados por ">>", cada uno un atajo, "type:", "uia:" o "screenshot".
+    // Ej.: "ctrl+c>>alt+tab>>ctrl+v". ponytail: un snippet type: no puede contener ">>".
+    for (i, step) in action.split(">>").enumerate() {
+        if i > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(250)); // que la app procese el paso previo
+        }
+        run_step(step.trim())?;
+    }
+    Ok(())
+}
+
+/// Un paso atómico: captura, botón UIA, texto literal o atajo de teclado.
+fn run_step(step: &str) -> Result<(), &'static str> {
+    if step == "screenshot" {
+        return take_screenshot();
+    }
+    if let Some(name) = step.strip_prefix("uia:") {
+        return invoke_uia(name.trim());
+    }
+    // "type:<texto>" → escribe el texto literal (snippets: respuestas enlatadas, emails, fórmulas).
+    if let Some(text) = step.strip_prefix("type:") {
+        use enigo::{Enigo, Keyboard, Settings};
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.text(text).map_err(|_| "internal");
+    }
+    run_hotkey(step)
 }
 
 /// Localiza por nombre (coincidencia parcial) un elemento de la ventana en primer plano y lo clica.
@@ -1133,6 +1183,13 @@ fn parse_key(tok: &str) -> Result<enigo::Key, &'static str> {
         "down" => Ok(Key::DownArrow),
         "left" => Ok(Key::LeftArrow),
         "right" => Ok(Key::RightArrow),
+        // Teclas multimedia del SISTEMA: funcionan en cualquier app (control remoto de sofá).
+        "volup" => Ok(Key::VolumeUp),
+        "voldown" => Ok(Key::VolumeDown),
+        "volmute" => Ok(Key::VolumeMute),
+        "playpause" => Ok(Key::MediaPlayPause),
+        "nexttrack" => Ok(Key::MediaNextTrack),
+        "prevtrack" => Ok(Key::MediaPrevTrack),
         s if s.chars().count() == 1 => Ok(Key::Unicode(s.chars().next().unwrap())),
         _ => Err("bad_key"),
     }
@@ -1283,6 +1340,13 @@ fn save_profiles(profiles: Vec<Profile>) -> serde_json::Value {
     json!({ "ok": true })
 }
 
+/// QR de un perfil para compartirlo: otro KiBoard lo escanea desde el móvil y lo importa.
+#[tauri::command]
+fn profile_qr(profile: Profile) -> String {
+    let payload = format!("kbprofile:{}", serde_json::to_string(&profile).unwrap_or_default());
+    qr_svg(&payload)
+}
+
 fn qr_svg(data: &str) -> String {
     use qrcode::{render::svg, QrCode};
     match QrCode::new(data.as_bytes()) {
@@ -1311,6 +1375,10 @@ mod tests {
         assert!(parse_key("enter").is_ok());
         assert!(parse_key("left").is_ok());
         assert!(parse_key("nope").is_err());
+        // Teclas multimedia del sistema
+        for t in ["volup", "voldown", "volmute", "playpause", "nexttrack", "prevtrack"] {
+            assert!(parse_key(t).is_ok(), "token multimedia {t}");
+        }
     }
 }
 
@@ -1333,7 +1401,8 @@ pub fn run() {
             pairing_info,
             unpair_all,
             get_profiles,
-            save_profiles
+            save_profiles,
+            profile_qr
         ])
         // La X oculta la ventana (la app vive en el tray); sin esto la destruye y sale la app.
         .on_window_event(|window, event| {
