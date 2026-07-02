@@ -95,7 +95,7 @@ fn default_profiles() -> Vec<Profile> {
         ]),
         profile("youtube", &["youtube"], vec![
             b("Play/Pausa", "play", "k"), b("Silenciar", "mute", "m"),
-            b("Pantalla completa", "video", "f"), b("Captura", "screenshot", "screenshot"),
+            b("Pantalla completa", "video", "f"),
             bx("Adelante", "redo", "l"), bx("Atrás", "undo", "j"),
             bx("Siguiente", "redo", "shift+n"), bx("Subtítulos", "text", "c"), bx("Teatro", "fullscreen", "t"),
         ]),
@@ -336,7 +336,7 @@ fn default_profiles() -> Vec<Profile> {
         profile("gmeet", &["google meet", "meet -"], vec![
             b("Silenciar", "mic", "ctrl+d"), b("Cámara", "video", "ctrl+e"),
             b("Levantar mano", "hand", "ctrl+alt+h"),
-            bx("Pant. completa", "fullscreen", "f"), bx("Captura", "screenshot", "screenshot"),
+            bx("Pant. completa", "fullscreen", "f"),
         ]),
         profile("trello", &["trello"], vec![
             b("Buscar", "find", "/"), b("Filtrar", "filter", "f"),
@@ -661,17 +661,15 @@ fn default_profiles() -> Vec<Profile> {
             bx("Historial", "history", "ctrl+h"), bx("Descargas", "download", "ctrl+j"),
             bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
         ]),
-        // --- Fallback: control remoto de sofá (teclas multimedia del sistema, valen en cualquier app) ---
+        // --- Fallback (app no reconocida). Volumen y captura viven en el dock fijo del móvil;
+        // Play/Pausa solo en perfiles de apps que reproducen (no pinta nada en un Word). ---
         profile("generic", &[], vec![
-            b("Play/Pausa", "play", "playpause"), b("Vol +", "vol", "volup"),
-            b("Vol -", "voldown", "voldown"), b("Silencio", "mute", "volmute"),
-            b("Captura", "screenshot", "screenshot"),
-            bx("Siguiente", "next", "nexttrack"), bx("Anterior", "prev", "prevtrack"),
+            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Deshacer", "undo", "ctrl+z"),
             // Game Bar de Windows: atajos FIJOS del sistema, valen dentro de cualquier juego.
             bx("Clip 30s", "clip", "win+alt+g"), bx("Grabar juego", "record", "win+alt+r"),
             bx("Game Bar", "apps", "win+g"),
-            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"), bx("Cortar", "cut", "ctrl+x"),
-            bx("Deshacer", "undo", "ctrl+z"), bx("Rehacer", "redo", "ctrl+y"),
+            bx("Cortar", "cut", "ctrl+x"), bx("Rehacer", "redo", "ctrl+y"),
             bx("Guardar", "save", "ctrl+s"), bx("Buscar", "find", "ctrl+f"), bx("Imprimir", "print", "ctrl+p"),
         ]),
     ];
@@ -688,7 +686,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 20;
+const PROFILES_VERSION: u32 = 21;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
