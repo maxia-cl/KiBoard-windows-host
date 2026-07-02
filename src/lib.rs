@@ -958,13 +958,19 @@ async fn run_ws_server() {
 }
 
 async fn handle_conn(stream: TcpStream) {
-    let ws = match tokio_tungstenite::accept_async(stream).await {
+    // Tope de tamaño de frame/mensaje: un cliente legítimo manda JSON de pocos KB (el perfil más
+    // grande al importar). 64 KB corta a un atacante que quiera saturar memoria con frames gigantes.
+    let mut cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
+    cfg.max_message_size = Some(64 * 1024);
+    cfg.max_frame_size = Some(64 * 1024);
+    let ws = match tokio_tungstenite::accept_async_with_config(stream, Some(cfg)).await {
         Ok(w) => w,
         Err(_) => return,
     };
     let (mut write, mut read) = ws.split();
     let mut rx = tx().subscribe();
     let mut authed = false;
+    let mut failed_auth = 0u32; // freno anti-fuerza-bruta del token
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
 
     loop {
@@ -982,6 +988,16 @@ async fn handle_conn(stream: TcpStream) {
                 let txt = msg.into_text().map(|t| t.to_string()).unwrap_or_default();
                 let was_authed = authed;
                 let reply = handle_message(&txt, &mut authed);
+                // Freno al token: cada intento de "hello" fallido cuesta 500ms y a los 5 se corta,
+                // acotando el rate de fuerza bruta sin afectar a un cliente legítimo.
+                if !authed && txt.contains("\"hello\"") {
+                    failed_auth += 1;
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    if failed_auth >= 5 {
+                        let _ = write.send(Message::text(reply)).await;
+                        break;
+                    }
+                }
                 if write.send(Message::text(reply)).await.is_err() { break; }
                 if !was_authed && authed {
                     let cur = current_layout().lock().unwrap().clone();
@@ -1573,6 +1589,13 @@ fn take_screenshot() -> Result<(), &'static str> {
     std::fs::create_dir_all(&dir).map_err(|_| "internal")?;
     let path = dir.join(format!("screenshot-{}.png", now_ts()));
     img.save(&path).map_err(|_| "internal")?;
+    // Señal audible: una captura la puede disparar el teléfono a distancia; un sonido avisa a quien
+    // esté frente al PC que se tomó (UX + anti-abuso silencioso).
+    unsafe {
+        let _ = windows::Win32::System::Diagnostics::Debug::MessageBeep(
+            windows::Win32::UI::WindowsAndMessaging::MB_OK,
+        );
+    }
     Ok(())
 }
 
