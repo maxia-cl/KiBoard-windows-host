@@ -1335,6 +1335,13 @@ pub fn run() {
             get_profiles,
             save_profiles
         ])
+        // La X oculta la ventana (la app vive en el tray); sin esto la destruye y sale la app.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
