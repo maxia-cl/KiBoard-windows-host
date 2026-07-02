@@ -800,20 +800,32 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
     let mut buttons: Vec<_> = raw
         .iter()
         .filter(|(_, _, action, _, _, _)| !disabled.contains(action))
+        // Sin micrófono en OBS (ni global ni en escenas): el botón Mic no haría nada → ocultarlo.
+        .filter(|(_, _, action, _, _, _)| {
+            !(action == "obs:mic" && obs.connected && obs.mic_name.is_empty())
+        })
         .map(|(i, label, action, icon, danger, rec)| {
-            let mut j = json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec });
             // Estado en vivo para los botones OBS (REC encendido, mic muteado…).
-            if obs.connected {
-                let on = match action.as_str() {
+            let on = if obs.connected {
+                match action.as_str() {
                     "obs:record" => Some(obs.recording),
                     "obs:stream" => Some(obs.streaming),
                     "obs:mic" => Some(obs.mic_muted),
                     "obs:replaybuffer" => Some(obs.replay_active),
                     _ => None,
-                };
-                if let Some(on) = on {
-                    j["on"] = json!(on);
                 }
+            } else {
+                None
+            };
+            // Etiqueta dinámica: el toggle dice lo que va a HACER, no lo que es.
+            let label = match (action.as_str(), on) {
+                ("obs:record", Some(true)) => "Detener grab.",
+                ("obs:stream", Some(true)) => "Cortar directo",
+                _ => label.as_str(),
+            };
+            let mut j = json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec });
+            if let Some(on) = on {
+                j["on"] = json!(on);
             }
             j
         })
@@ -1247,6 +1259,25 @@ fn obs_apply(v: &serde_json::Value) {
                         st.mic_name = ["mic1", "mic2", "mic3", "mic4"]
                             .iter()
                             .find_map(|k| d[k].as_str().filter(|s| !s.is_empty()))
+                            .unwrap_or("")
+                            .to_string();
+                        if st.mic_name.is_empty() {
+                            // Sin mic global: buscar un input de micrófono en las escenas.
+                            followup = Some(("GetInputList", json!({})));
+                        } else {
+                            followup = Some(("GetInputMute", json!({ "inputName": st.mic_name })));
+                        }
+                    }
+                    "GetInputList" => {
+                        // Fallback: primer input de captura de micrófono (wasapi_input_capture).
+                        st.mic_name = d["inputs"]
+                            .as_array()
+                            .and_then(|a| {
+                                a.iter().find(|i| {
+                                    i["inputKind"].as_str().unwrap_or("").contains("input_capture")
+                                })
+                            })
+                            .and_then(|i| i["inputName"].as_str())
                             .unwrap_or("")
                             .to_string();
                         if !st.mic_name.is_empty() {
