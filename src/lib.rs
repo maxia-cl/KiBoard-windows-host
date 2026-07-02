@@ -1530,25 +1530,94 @@ unsafe extern "system" fn enum_windows_cb(
     hwnd: windows::Win32::Foundation::HWND,
     lparam: windows::Win32::Foundation::LPARAM,
 ) -> windows::core::BOOL {
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, GetWindowTextW, IsWindowVisible};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible, GWL_EXSTYLE,
+        WS_EX_TOOLWINDOW,
+    };
     let list = &mut *(lparam.0 as *mut Vec<(isize, String)>);
-    if IsWindowVisible(hwnd).as_bool() {
-        let len = GetWindowTextLengthW(hwnd);
-        if len > 0 {
-            let mut buf = vec![0u16; len as usize + 1];
-            let read = GetWindowTextW(hwnd, &mut buf);
-            let title = String::from_utf16_lossy(&buf[..read as usize]);
-            if !title.is_empty() && title != "Program Manager" {
-                list.push((hwnd.0 as isize, title));
-            }
+    if !IsWindowVisible(hwnd).as_bool() {
+        return windows::core::BOOL(1);
+    }
+    // Ventanas "cloaked" (UWP suspendidas: Configuración, Tienda…): Windows las lista como
+    // visibles pero NO están en pantalla — son los fantasmas duplicados del cambiador.
+    let mut cloaked: u32 = 0;
+    let _ = DwmGetWindowAttribute(
+        hwnd,
+        DWMWA_CLOAKED,
+        &mut cloaked as *mut _ as *mut core::ffi::c_void,
+        std::mem::size_of::<u32>() as u32,
+    );
+    if cloaked != 0 {
+        return windows::core::BOOL(1);
+    }
+    // Tool windows (paletas flotantes, overlays) no aparecen en el alt-tab de Windows: fuera.
+    if (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32) & WS_EX_TOOLWINDOW.0 != 0 {
+        return windows::core::BOOL(1);
+    }
+    let len = GetWindowTextLengthW(hwnd);
+    if len > 0 {
+        let mut buf = vec![0u16; len as usize + 1];
+        let read = GetWindowTextW(hwnd, &mut buf);
+        let title = String::from_utf16_lossy(&buf[..read as usize]);
+        if !title.is_empty() && title != "Program Manager" {
+            list.push((hwnd.0 as isize, title));
         }
     }
     windows::core::BOOL(1)
 }
 
-/// Lista las ventanas de apps abiertas (JSON `windows`).
+/// Ruta del ejecutable dueño de una ventana (para sacarle el ícono).
+fn window_process_path(hwnd: windows::Win32::Foundation::HWND) -> String {
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return String::new();
+        }
+        let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return String::new();
+        };
+        let mut buf = [0u16; 512];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(
+            h,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = windows::Win32::Foundation::CloseHandle(h);
+        match ok {
+            Ok(()) => String::from_utf16_lossy(&buf[..len as usize]),
+            Err(_) => String::new(),
+        }
+    }
+}
+
+/// Ícono por ruta de exe con caché (extraerlo es caro y los íconos no cambian).
+fn icon_cached(path: &str) -> String {
+    use std::collections::HashMap;
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    if path.is_empty() {
+        return String::new();
+    }
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(b) = cache.lock().unwrap().get(path) {
+        return b.clone();
+    }
+    let b = extract_icon_b64(path);
+    cache.lock().unwrap().insert(path.to_string(), b.clone());
+    b
+}
+
+/// Lista las ventanas de apps abiertas (JSON `windows`), con el ícono real de cada exe.
 fn list_windows_json() -> String {
-    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
     let mut list: Vec<(isize, String)> = Vec::new();
     unsafe {
@@ -1556,7 +1625,10 @@ fn list_windows_json() -> String {
     }
     let items: Vec<_> = list
         .into_iter()
-        .map(|(id, title)| json!({ "id": id, "title": title }))
+        .map(|(id, title)| {
+            let path = window_process_path(HWND(id as *mut core::ffi::c_void));
+            json!({ "id": id, "title": title, "icon": icon_cached(&path) })
+        })
         .collect();
     json!({ "v": 1, "type": "windows", "items": items }).to_string()
 }

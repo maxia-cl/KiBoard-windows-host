@@ -38,6 +38,6 @@ rand = "0.8"
 dirs = "5"
 active-win-pos-rs = "0.8"
 windows-icons = "0.3"
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_System_Threading"] }
 uiautomation = "0.25.0"
 
