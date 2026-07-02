@@ -839,9 +839,13 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
             }));
         }
     }
+    // Volumen del sistema para el dock del móvil (slider). null si no hay dispositivo de audio.
+    let sys = system_volume()
+        .map(|(vol, muted)| json!({ "vol": vol, "muted": muted }))
+        .unwrap_or(serde_json::Value::Null);
     json!({
         "v": 1, "type": "layout", "profileId": profile_id,
-        "appName": app, "appIcon": icon_b64, "buttons": buttons
+        "appName": app, "appIcon": icon_b64, "buttons": buttons, "sys": sys
     })
     .to_string()
 }
@@ -1057,6 +1061,53 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
         }
         _ => json!({"v":1,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Volumen maestro del sistema (Core Audio) — para el slider del dock del móvil
+// ---------------------------------------------------------------------------
+
+/// Ejecuta `f` con el IAudioEndpointVolume del dispositivo de salida por defecto.
+fn with_endpoint_volume<T>(
+    f: impl FnOnce(&windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume) -> windows::core::Result<T>,
+) -> Option<T> {
+    use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+    use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+    unsafe {
+        // ponytail: COM init/uninit por llamada; a 2Hz el coste es irrelevante.
+        let init = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let out = (|| -> windows::core::Result<T> {
+            let enu: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+            let dev = enu.GetDefaultAudioEndpoint(eRender, eConsole)?;
+            let vol: IAudioEndpointVolume = dev.Activate(CLSCTX_ALL, None)?;
+            f(&vol)
+        })();
+        if init.is_ok() {
+            CoUninitialize();
+        }
+        out.ok()
+    }
+}
+
+/// (volumen 0-100, muteado) del dispositivo de salida por defecto.
+fn system_volume() -> Option<(u8, bool)> {
+    with_endpoint_volume(|v| unsafe {
+        let level = v.GetMasterVolumeLevelScalar()?;
+        let muted = v.GetMute()?.as_bool();
+        Ok(((level * 100.0).round() as u8, muted))
+    })
+}
+
+/// Fija el volumen maestro (0.0–1.0) y des-mutea (mover el slider = quiero oír).
+fn set_system_volume(level: f32) -> Result<(), &'static str> {
+    with_endpoint_volume(|v| unsafe {
+        v.SetMasterVolumeLevelScalar(level, std::ptr::null())?;
+        v.SetMute(false, std::ptr::null())
+    })
+    .ok_or("sin_audio")
 }
 
 // ---------------------------------------------------------------------------
@@ -1352,6 +1403,11 @@ fn run_step(step: &str) -> Result<(), &'static str> {
     // "obs:<cmd>" → request al obs-websocket (funciona con el juego en primer plano).
     if let Some(cmd) = step.strip_prefix("obs:") {
         return obs_action(cmd);
+    }
+    // "vol:<0-100>" → volumen maestro absoluto (el slider del dock).
+    if let Some(v) = step.strip_prefix("vol:") {
+        let pct: f32 = v.trim().parse().map_err(|_| "bad_vol")?;
+        return set_system_volume((pct / 100.0).clamp(0.0, 1.0));
     }
     // "type:<texto>" → escribe el texto literal (snippets: respuestas enlatadas, emails, fórmulas).
     if let Some(text) = step.strip_prefix("type:") {
