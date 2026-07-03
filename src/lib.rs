@@ -670,7 +670,9 @@ fn default_profiles() -> Vec<Profile> {
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Atrás", "back", "alt+left"), b("Adelante", "fwdnav", "alt+right"),
             b("Recargar", "refresh", "f5"), b("Nueva pestaña", "new", "ctrl+t"),
-            b("Subir", "scrollup", "scroll:-3"), b("Bajar", "scrolldown", "scroll:3"),
+            // Rueda de scroll: el móvil la pinta como control arrastrable (ver _scrollWheel).
+            b("Scroll", "scrollwheel", "scrollwheel"),
+            bx("Subir", "scrollup", "scroll:-3"), bx("Bajar", "scrolldown", "scroll:3"),
             bx("Cerrar pestaña", "close", "ctrl+w"), bx("Buscar", "find", "ctrl+f"),
             bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
             bx("Reabrir pestaña", "redo", "ctrl+shift+t"), bx("Favorito", "star", "ctrl+d"),
@@ -702,7 +704,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 23;
+const PROFILES_VERSION: u32 = 24;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
