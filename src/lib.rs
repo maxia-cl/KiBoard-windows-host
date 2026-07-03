@@ -139,7 +139,7 @@ fn default_profiles() -> Vec<Profile> {
         profile("acrobat", &["acrobat"], vec![
             b("Buscar", "find", "ctrl+f"), b("Imprimir", "print", "ctrl+p"),
             b("Guardar", "save", "ctrl+s"), b("Copiar", "copy", "ctrl+c"),
-            bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
+            bx("Zoom +", "zoomin", "ctrl+add"), bx("Zoom -", "zoomout", "ctrl+subtract"),
             bx("Pant. completa", "fullscreen", "ctrl+l"),
         ]),
         // --- Creativas ---
@@ -405,7 +405,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Pincel", "brush", "b"), b("Borrador", "eraser", "e"),
             b("Deshacer", "undo", "ctrl+z"), b("Guardar", "save", "ctrl+s"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
-            bx("Zoom +", "zoomin", "ctrl+="), bx("Rehacer", "redo", "ctrl+shift+z"),
+            bx("Zoom +", "zoomin", "ctrl+add"), bx("Rehacer", "redo", "ctrl+shift+z"),
         ]),
         profile("inkscape", &["inkscape"], vec![
             b("Seleccionar", "cursor", "s"), b("Lápiz", "pencil", "p"),
@@ -507,13 +507,13 @@ fn default_profiles() -> Vec<Profile> {
         ]),
         profile("sumatra", &["sumatra"], vec![
             b("Buscar", "find", "ctrl+f"), b("Ir a página", "find", "ctrl+g"),
-            b("Zoom +", "zoomin", "ctrl+="), b("Zoom -", "zoomout", "ctrl+-"),
+            b("Zoom +", "zoomin", "ctrl+add"), b("Zoom -", "zoomout", "ctrl+subtract"),
             bx("Pant. completa", "fullscreen", "f11"), bx("Imprimir", "print", "ctrl+p"),
         ]),
         profile("foxit", &["foxit"], vec![
             b("Buscar", "find", "ctrl+f"), b("Guardar", "save", "ctrl+s"),
             b("Imprimir", "print", "ctrl+p"), b("Copiar", "copy", "ctrl+c"),
-            bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
+            bx("Zoom +", "zoomin", "ctrl+add"), bx("Zoom -", "zoomout", "ctrl+subtract"),
         ]),
         profile("shotcut", &["shotcut"], vec![
             b("Play/Pausa", "play", "space"), b("Dividir", "cut", "s"),
@@ -665,13 +665,17 @@ fn default_profiles() -> Vec<Profile> {
             b("Overlay", "apps", "shift+tab"), b("Captura", "screenshot", "f12"),
         ]),
         // --- Navegador genérico (cualquier pestaña no específica) ---
+        // Priorizado para navegar/leer (sofá): atrás/adelante, recargar y scroll arriba/abajo
+        // (mantener pulsado = rueda de scroll continua). Copiar/Pegar pasan a extras.
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
-            b("Nueva pestaña", "new", "ctrl+t"), b("Cerrar pestaña", "close", "ctrl+w"),
-            b("Recargar", "refresh", "f5"), b("Buscar", "find", "ctrl+f"),
-            b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
+            b("Atrás", "back", "alt+left"), b("Adelante", "fwdnav", "alt+right"),
+            b("Recargar", "refresh", "f5"), b("Nueva pestaña", "new", "ctrl+t"),
+            b("Subir", "scrollup", "scroll:-3"), b("Bajar", "scrolldown", "scroll:3"),
+            bx("Cerrar pestaña", "close", "ctrl+w"), bx("Buscar", "find", "ctrl+f"),
+            bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
             bx("Reabrir pestaña", "redo", "ctrl+shift+t"), bx("Favorito", "star", "ctrl+d"),
             bx("Historial", "history", "ctrl+h"), bx("Descargas", "download", "ctrl+j"),
-            bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+="), bx("Zoom -", "zoomout", "ctrl+-"),
+            bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+add"), bx("Zoom -", "zoomout", "ctrl+subtract"),
         ]),
         // --- Fallback (app no reconocida). Volumen y captura viven en el dock fijo del móvil;
         // Play/Pausa solo en perfiles de apps que reproducen (no pinta nada en un Word). ---
@@ -698,7 +702,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 22;
+const PROFILES_VERSION: u32 = 23;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -1435,6 +1439,13 @@ fn run_step(step: &str) -> Result<(), &'static str> {
         let pct: f32 = v.trim().parse().map_err(|_| "bad_vol")?;
         return set_system_volume((pct / 100.0).clamp(0.0, 1.0));
     }
+    // "scroll:<n>" → rueda del ratón (n>0 baja, n<0 sube). Con mantener-pulsado = scroll continuo.
+    if let Some(n) = step.strip_prefix("scroll:") {
+        use enigo::{Axis, Enigo, Mouse, Settings};
+        let lines: i32 = n.trim().parse().map_err(|_| "bad_scroll")?;
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.scroll(lines, Axis::Vertical).map_err(|_| "internal");
+    }
     // "type:<texto>" → escribe el texto literal (snippets: respuestas enlatadas, emails, fórmulas).
     if let Some(text) = step.strip_prefix("type:") {
         use enigo::{Enigo, Keyboard, Settings};
@@ -1588,6 +1599,11 @@ fn parse_key(tok: &str) -> Result<enigo::Key, &'static str> {
         "playpause" => Ok(Key::MediaPlayPause),
         "nexttrack" => Ok(Key::MediaNextTrack),
         "prevtrack" => Ok(Key::MediaPrevTrack),
+        // Numpad +/- por tecla virtual (VK_ADD/VK_SUBTRACT): independientes del layout del teclado.
+        // "ctrl+=" fallaba en teclados ES/latino (= es tecla con Shift → enigo mapea mal); los
+        // navegadores y visores aceptan ctrl + numpad-más/menos para el zoom.
+        "add" => Ok(Key::Other(0x6B)),
+        "subtract" => Ok(Key::Other(0x6D)),
         s if s.chars().count() == 1 => Ok(Key::Unicode(s.chars().next().unwrap())),
         _ => Err("bad_key"),
     }
