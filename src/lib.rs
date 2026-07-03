@@ -59,6 +59,10 @@ fn bd(label: &str, icon: &str, action: &str) -> Button {
 fn bx(label: &str, icon: &str, action: &str) -> Button {
     Button { label: label.into(), icon: icon.into(), action: action.into(), danger: false, recommended: false }
 }
+/// Botón "extra" y peligroso: fuera de la selección por defecto + rojo con confirmación (p. ej. Eliminar).
+fn bxd(label: &str, icon: &str, action: &str) -> Button {
+    Button { label: label.into(), icon: icon.into(), action: action.into(), danger: true, recommended: false }
+}
 fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
     Profile { id: id.into(), matches: matches.iter().map(|s| s.to_string()).collect(), buttons }
 }
@@ -81,11 +85,13 @@ fn default_profiles() -> Vec<Profile> {
             b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
             bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("gdrive", &["google drive", "mi unidad"], vec![
             b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "new", "ctrl+t"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Nueva carpeta", "newfolder", "shift+f"), bx("Renombrar", "rename", "n"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("gmail", &["gmail"], vec![
             b("Redactar", "new", "c"), b("Buscar", "find", "/"),
@@ -106,6 +112,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
             bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("excel", &["excel"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
@@ -213,6 +220,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Reemplazar", "replace", "ctrl+h"), bx("Comentar", "comment", "ctrl+/"),
             bx("Terminal", "terminal", "ctrl+`"), bx("Ir a línea", "find", "ctrl+g"),
             bx("Formato", "format", "shift+alt+f"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt", "warp"], vec![
             // OJO: ctrl+c en consola es SIGINT (mata el proceso). Windows Terminal/PowerShell
@@ -228,12 +236,14 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Ir a línea", "find", "ctrl+g"), bx("Duplicar línea", "new", "ctrl+d"),
             bx("Comentar", "comment", "ctrl+q"), bx("Imprimir", "print", "ctrl+p"), bx("Guardar todo", "save", "ctrl+shift+s"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("explorer", &["explorador", "file explorer", "explorer"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             b("Nueva carpeta", "newfolder", "ctrl+shift+n"), b("Renombrar", "rename", "f2"),
             bx("Cortar", "cut", "ctrl+x"), bx("Atrás", "undo", "alt+left"),
             bx("Subir nivel", "redo", "alt+up"), bx("Propiedades", "settings", "alt+enter"), bx("Buscar", "find", "ctrl+f"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         // --- Lote 1: apps/web añadidas hacia ~100 (van antes de "browser" para ganar por título) ---
         profile("chatgpt", &["chatgpt"], vec![
@@ -264,6 +274,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Reemplazar", "replace", "ctrl+h"), bx("Comentar", "comment", "ctrl+/"),
             bx("Duplicar línea", "duplicate", "ctrl+shift+d"), bx("Ir a línea", "find", "ctrl+g"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("obsidian", &["obsidian"], vec![
             b("Nueva nota", "new", "ctrl+n"), b("Cambiador", "find", "ctrl+o"),
@@ -492,6 +503,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Reemplazar", "replace", "ctrl+h"), b("Deshacer", "undo", "ctrl+z"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cortar", "cut", "ctrl+x"), bx("Ir a línea", "find", "ctrl+g"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
         profile("sumatra", &["sumatra"], vec![
             b("Buscar", "find", "ctrl+f"), b("Ir a página", "find", "ctrl+g"),
@@ -686,7 +698,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 21;
+const PROFILES_VERSION: u32 = 22;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
