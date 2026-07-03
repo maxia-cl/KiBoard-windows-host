@@ -670,8 +670,7 @@ fn default_profiles() -> Vec<Profile> {
         profile("browser", &["chrome", "edge", "firefox", "brave", "opera", "vivaldi"], vec![
             b("Atrás", "back", "alt+left"), b("Adelante", "fwdnav", "alt+right"),
             b("Recargar", "refresh", "f5"), b("Nueva pestaña", "new", "ctrl+t"),
-            // Rueda de scroll: el móvil la pinta como control arrastrable (ver _scrollWheel).
-            b("Scroll", "scrollwheel", "scrollwheel"),
+            // Scroll/ratón viven en el botón "Ratón" global del móvil (barra superior, pantalla completa).
             bx("Subir", "scrollup", "scroll:-3"), bx("Bajar", "scrolldown", "scroll:3"),
             bx("Cerrar pestaña", "close", "ctrl+w"), bx("Buscar", "find", "ctrl+f"),
             bx("Copiar", "copy", "ctrl+c"), bx("Pegar", "paste", "ctrl+v"),
@@ -704,7 +703,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 24;
+const PROFILES_VERSION: u32 = 26;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -1447,6 +1446,42 @@ fn run_step(step: &str) -> Result<(), &'static str> {
         let lines: i32 = n.trim().parse().map_err(|_| "bad_scroll")?;
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
         return e.scroll(lines, Axis::Vertical).map_err(|_| "internal");
+    }
+    // "mouse:<dx>,<dy>" → mueve el cursor en relativo (el móvil pinta un trackpad; ver _mousePad).
+    if let Some(rest) = step.strip_prefix("mouse:") {
+        use enigo::{Coordinate, Enigo, Mouse, Settings};
+        let (dx, dy) = rest.split_once(',').ok_or("bad_mouse")?;
+        let dx: i32 = dx.trim().parse().map_err(|_| "bad_mouse")?;
+        let dy: i32 = dy.trim().parse().map_err(|_| "bad_mouse")?;
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.move_mouse(dx, dy, Coordinate::Rel).map_err(|_| "internal");
+    }
+    // "click:left|right" → clic del ratón (toque en el trackpad).
+    if let Some(which) = step.strip_prefix("click:") {
+        use enigo::{Button, Direction, Enigo, Mouse, Settings};
+        let btn = match which.trim() {
+            "right" => Button::Right,
+            _ => Button::Left,
+        };
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.button(btn, Direction::Click).map_err(|_| "internal");
+    }
+    // "hscroll:<n>" → rueda horizontal (trackpad: dos dedos en horizontal).
+    if let Some(n) = step.strip_prefix("hscroll:") {
+        use enigo::{Axis, Enigo, Mouse, Settings};
+        let lines: i32 = n.trim().parse().map_err(|_| "bad_scroll")?;
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.scroll(lines, Axis::Horizontal).map_err(|_| "internal");
+    }
+    // "zoom:<n>" → ctrl+rueda (zoom universal). n>0 acercar, n<0 alejar.
+    if let Some(n) = step.strip_prefix("zoom:") {
+        use enigo::{Axis, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+        let steps: i32 = n.trim().parse().map_err(|_| "bad_zoom")?;
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        e.key(Key::Control, Direction::Press).map_err(|_| "internal")?;
+        let r = e.scroll(-steps, Axis::Vertical); // rueda arriba (n negativo) = acercar
+        let _ = e.key(Key::Control, Direction::Release);
+        return r.map_err(|_| "internal");
     }
     // "type:<texto>" → escribe el texto literal (snippets: respuestas enlatadas, emails, fórmulas).
     if let Some(text) = step.strip_prefix("type:") {
