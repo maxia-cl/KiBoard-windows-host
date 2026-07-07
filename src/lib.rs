@@ -2002,6 +2002,9 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        // Analítica anónima (Aptabase): solo eventos de features, sin PII (ver privacy-policy.md).
+        // ponytail: sin toggle en la UI del host aún; se añade con la revisión de UI (Fase 5 del plan).
+        .plugin(tauri_plugin_aptabase::Builder::new("A-US-9332956172").build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -2024,6 +2027,11 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // Un evento por arranque; la conexión de clientes ya la reporta el móvil (paired_ok).
+            {
+                use tauri_plugin_aptabase::EventTracker;
+                let _ = app.track_event("app_started", None);
+            }
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
             let (obs_tx, obs_rx) = tokio::sync::mpsc::unbounded_channel();
