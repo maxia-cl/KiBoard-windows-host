@@ -717,6 +717,13 @@ struct Config {
     /// Contraseña del servidor WebSocket de OBS (vacía si el server no tiene auth).
     #[serde(default)]
     obs_password: String,
+    /// Compartir estadísticas anónimas de uso (Aptabase). Opt-out desde la UI.
+    #[serde(default = "default_true")]
+    analytics: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Config {
@@ -729,7 +736,8 @@ impl Config {
         let mut c: Config = std::fs::read_to_string(Self::path())
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+            // Instalación nueva (sin archivo): analytics ON por defecto; derive(Default) daría false.
+            .unwrap_or(Config { analytics: true, ..Default::default() });
         if c.token.is_empty() {
             c.token = new_token();
         }
@@ -761,6 +769,9 @@ static CURRENT_LAYOUT: OnceLock<Mutex<String>> = OnceLock::new();
 fn current_layout() -> &'static Mutex<String> {
     CURRENT_LAYOUT.get_or_init(|| Mutex::new(String::new()))
 }
+
+/// Dispositivos móviles autenticados ahora mismo (para el badge de la UI del host).
+static CLIENTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 fn new_token() -> String {
     use rand::Rng;
@@ -1017,6 +1028,7 @@ async fn handle_conn(stream: TcpStream) {
                 }
                 if write.send(Message::text(reply)).await.is_err() { break; }
                 if !was_authed && authed {
+                    CLIENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let cur = current_layout().lock().unwrap().clone();
                     if !cur.is_empty() && write.send(Message::text(cur)).await.is_err() { break; }
                 }
@@ -1027,6 +1039,9 @@ async fn handle_conn(stream: TcpStream) {
                 }
             }
         }
+    }
+    if authed {
+        CLIENTS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -1838,6 +1853,31 @@ fn best_lan_ip() -> String {
     v4s.first().map(|v| v.to_string()).unwrap_or_else(|| "127.0.0.1".into())
 }
 
+/// Estado para la cabecera de la UI: dispositivos conectados, versión y toggle de analítica.
+#[tauri::command]
+fn host_status() -> serde_json::Value {
+    json!({
+        "clients": CLIENTS.load(std::sync::atomic::Ordering::Relaxed),
+        "version": env!("CARGO_PKG_VERSION"),
+        "analytics": config().lock().unwrap().analytics,
+    })
+}
+
+#[tauri::command]
+fn set_analytics(on: bool) {
+    let mut cfg = config().lock().unwrap();
+    cfg.analytics = on;
+    cfg.save();
+}
+
+/// Abre la página de donaciones en el navegador (el link vive aquí, un solo lugar).
+#[tauri::command]
+fn open_donate(app: tauri::AppHandle) {
+    use tauri_plugin_opener::OpenerExt;
+    // ponytail: URL placeholder — reemplazar por la cuenta real de donaciones.
+    let _ = app.opener().open_url("https://buymeacoffee.com/kiboard", None::<&str>);
+}
+
 #[tauri::command]
 fn pairing_info() -> serde_json::Value {
     let token = config().lock().unwrap().token.clone();
@@ -2017,7 +2057,10 @@ pub fn run() {
             save_profiles,
             profile_qr,
             obs_info,
-            set_obs_password
+            set_obs_password,
+            host_status,
+            set_analytics,
+            open_donate
         ])
         // La X oculta la ventana (la app vive en el tray); sin esto la destruye y sale la app.
         .on_window_event(|window, event| {
@@ -2028,7 +2071,7 @@ pub fn run() {
         })
         .setup(|app| {
             // Un evento por arranque; la conexión de clientes ya la reporta el móvil (paired_ok).
-            {
+            if config().lock().unwrap().analytics {
                 use tauri_plugin_aptabase::EventTracker;
                 let _ = app.track_event("app_started", None);
             }
