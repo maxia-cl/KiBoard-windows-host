@@ -1853,6 +1853,60 @@ fn best_lan_ip() -> String {
     v4s.first().map(|v| v.to_string()).unwrap_or_else(|| "127.0.0.1".into())
 }
 
+/// Analítica anónima (Aptabase, API HTTP directa): solo eventos de features, sin PII.
+/// ponytail: cliente propio; el plugin oficial 1.0 panickea con Tauri 2 ("no reactor running").
+/// Sin cola offline: sin red = evento perdido, suficiente para estadística.
+fn track_event(name: &'static str) {
+    if !config().lock().unwrap().analytics {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let body = json!({
+            "timestamp": chrono_like_now(),
+            "sessionId": std::process::id().to_string(),
+            "eventName": name,
+            "systemProps": {
+                "isDebug": cfg!(debug_assertions),
+                "locale": "es",
+                "osName": "windows",
+                "osVersion": "",
+                "appVersion": env!("CARGO_PKG_VERSION"),
+                "sdkVersion": "kiboard-min@1",
+            },
+            "props": {},
+        });
+        let _ = reqwest::Client::new()
+            .post("https://us.aptabase.com/api/v0/event")
+            .header("App-Key", "A-US-9332956172")
+            .json(&body)
+            .send()
+            .await;
+    });
+}
+
+/// ISO-8601 UTC sin dependencia de chrono (Aptabase solo necesita segundos).
+fn chrono_like_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    // Conversión civil (algoritmo de Howard Hinnant, días → y/m/d).
+    let days = secs.div_euclid(86400);
+    let rem = secs.rem_euclid(86400);
+    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+}
+
 /// Estado para la cabecera de la UI: dispositivos conectados, versión y toggle de analítica.
 #[tauri::command]
 fn host_status() -> serde_json::Value {
@@ -2043,9 +2097,6 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
-        // Analítica anónima (Aptabase): solo eventos de features, sin PII (ver privacy-policy.md).
-        // ponytail: sin toggle en la UI del host aún; se añade con la revisión de UI (Fase 5 del plan).
-        .plugin(tauri_plugin_aptabase::Builder::new("A-US-9332956172").build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -2072,10 +2123,7 @@ pub fn run() {
         })
         .setup(|app| {
             // Un evento por arranque; la conexión de clientes ya la reporta el móvil (paired_ok).
-            if config().lock().unwrap().analytics {
-                use tauri_plugin_aptabase::EventTracker;
-                let _ = app.track_event("app_started", None);
-            }
+            track_event("app_started");
             tauri::async_runtime::spawn(run_ws_server());
             tauri::async_runtime::spawn(watch_active_app());
             let (obs_tx, obs_rx) = tokio::sync::mpsc::unbounded_channel();
