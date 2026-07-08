@@ -1874,8 +1874,9 @@ fn set_analytics(on: bool) {
 #[tauri::command]
 fn open_donate(app: tauri::AppHandle) {
     use tauri_plugin_opener::OpenerExt;
-    // ponytail: URL placeholder — reemplazar por la cuenta real de donaciones.
-    let _ = app.opener().open_url("https://buymeacoffee.com/kiboard", None::<&str>);
+    let _ = app
+        .opener()
+        .open_url("https://github.com/sponsors/ricardomendezv", None::<&str>);
 }
 
 #[tauri::command]
