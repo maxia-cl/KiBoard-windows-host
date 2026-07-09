@@ -1917,6 +1917,19 @@ fn chrono_like_now() -> String {
     format!("{y:04}-{m:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
 }
 
+/// Prueba una acción del editor de perfiles. Espera 2 s para que el usuario enfoque la app
+/// destino (la acción corre sobre la ventana en primer plano, igual que desde el teléfono).
+#[tauri::command]
+async fn test_action(action: String) -> Result<(), String> {
+    // enigo/UIA son bloqueantes → hilo aparte para no congelar la UI del host.
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        run_action(&action).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|_| "internal".to_string())?
+}
+
 /// Estado para la cabecera de la UI: dispositivos conectados, versión y toggle de analítica.
 #[tauri::command]
 fn host_status() -> serde_json::Value {
@@ -2122,7 +2135,8 @@ pub fn run() {
             set_obs_password,
             host_status,
             set_analytics,
-            open_donate
+            open_donate,
+            test_action
         ])
         // La X oculta la ventana (la app vive en el tray); sin esto la destruye y sale la app.
         .on_window_event(|window, event| {
