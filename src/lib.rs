@@ -16,6 +16,8 @@ use tokio_tungstenite::tungstenite::Message;
 use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_autostart::ManagerExt;
 
+mod i18n;
+
 const WS_PORT: u16 = 8770;
 const HOST_NAME: &str = "KiBoard Host";
 
@@ -849,6 +851,9 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
                 ("obs:stream", Some(true)) => "Cortar directo",
                 _ => label.as_str(),
             };
+            // Traducción al idioma del cliente (el hello trae el locale). Se traduce aquí, al
+            // final, para cubrir también las etiquetas dinámicas de OBS.
+            let label = i18n::tr(label);
             let mut j = json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec });
             if let Some(on) = on {
                 j["on"] = json!(on);
@@ -1057,6 +1062,9 @@ fn handle_message(txt: &str, authed: &mut bool) -> String {
             let mut cfg = config().lock().unwrap();
             if !token.is_empty() && token == cfg.token {
                 *authed = true;
+                // Idioma del cliente: las etiquetas del catálogo se sirven traducidas. El poll
+                // de 500ms re-difunde el layout solo (cambia el JSON al cambiar el locale).
+                i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
                 if !cfg.paired.contains(&device) {
                     cfg.paired.push(device);
                     cfg.save();
