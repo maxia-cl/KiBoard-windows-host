@@ -1860,10 +1860,20 @@ fn track_event(name: &'static str) {
     if !config().lock().unwrap().analytics {
         return;
     }
+    // sessionId formato Aptabase: epoch_segundos * 1e8 + aleatorio de 8 dígitos (el server
+    // decodifica el inicio de sesión desde el id; otro formato = "Session is too old").
+    let session_id = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let r: u64 = rand::random::<u64>() % 100_000_000;
+        (secs * 100_000_000 + r).to_string()
+    };
     tauri::async_runtime::spawn(async move {
         let body = json!({
             "timestamp": chrono_like_now(),
-            "sessionId": std::process::id().to_string(),
+            "sessionId": session_id,
             "eventName": name,
             "systemProps": {
                 "isDebug": cfg!(debug_assertions),
