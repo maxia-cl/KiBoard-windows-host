@@ -1961,7 +1961,8 @@ fn open_donate(app: tauri::AppHandle) {
     use tauri_plugin_opener::OpenerExt;
     let _ = app
         .opener()
-        .open_url("https://github.com/sponsors/ricardomendezv", None::<&str>);
+        // Ko-fi mientras GitHub Sponsors sigue en revisión (flag de trade controls, 2026-07).
+        .open_url("https://ko-fi.com/kiboard", None::<&str>);
 }
 
 #[tauri::command]
