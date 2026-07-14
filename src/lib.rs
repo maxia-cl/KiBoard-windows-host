@@ -1837,6 +1837,18 @@ fn focus_window(id: isize) {
 /// Evita loopback/APIPA y prioriza redes domésticas (192.168 > 10 > 172) sobre adaptadores virtuales.
 fn best_lan_ip() -> String {
     use std::net::IpAddr;
+    // La IP correcta es la de la interfaz por la que el PC SALE a la red (la que ve el router),
+    // no la primera 192.168.x de la lista: adaptadores virtuales (WSL/Hyper-V/hotspot) también
+    // usan 192.168.x y envenenaban el QR (incidente 2026-07-14: QR con 192.168.224.1 virtual).
+    // Un connect UDP no manda ningún paquete; solo le pregunta al SO qué interfaz usaría.
+    if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if sock.connect("8.8.8.8:80").is_ok() {
+            if let Ok(addr) = sock.local_addr() {
+                return addr.ip().to_string();
+            }
+        }
+    }
+    // Fallback sin red/salida a internet: la heurística por prefijos de siempre.
     let mut v4s: Vec<std::net::Ipv4Addr> = local_ip_address::list_afinet_netifas()
         .unwrap_or_default()
         .into_iter()
