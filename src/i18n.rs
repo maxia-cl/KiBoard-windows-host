@@ -159,6 +159,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Nota", "Note", "便签"),
     ("Nueva carpeta", "New folder", "新建文件夹"),
     ("Nueva diap.", "New slide", "新幻灯片"),
+    ("Nueva línea", "New line", "换行"),
     ("Nueva nota", "New note", "新建笔记"),
     ("Nueva pestaña", "New tab", "新标签页"),
     ("Nueva página", "New page", "新建页面"),

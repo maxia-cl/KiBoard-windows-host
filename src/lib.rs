@@ -74,6 +74,19 @@ fn profile(id: &str, matches: &[&str], buttons: Vec<Button>) -> Profile {
 /// el botón "Cerrar app" (rojo + confirmación). Todos son editables desde la UI del host.
 fn default_profiles() -> Vec<Profile> {
     let mut list = vec![
+        // --- Agentes de IA en terminal (Claude Code, Codex, aider, Gemini CLI) ---
+        // Coinciden por TÍTULO: estos CLIs fijan el título de la terminal a su nombre
+        // (verificado: Claude Code pone "Claude"). Va PRIMERO para ganarle al perfil
+        // "terminal" (que matchea la app "windows terminal") y al genérico. El flujo es
+        // universal en terminal: flechas ↑/↓ eligen la alternativa, Enter acepta, Esc rechaza.
+        // ponytail: match por título; si un chat de IA en el navegador (claude.ai) coincide,
+        // el usuario puede afinar los "matches" desde la UI del host.
+        profile("ai", &["claude", "codex", "aider", "gemini"], vec![
+            b("Aceptar", "accept", "enter"), b("Rechazar", "close", "esc"),
+            b("Subir", "scrollup", "up"), b("Bajar", "scrolldown", "down"),
+            bx("Nueva línea", "text", "shift+enter"),
+            bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+        ]),
         // --- Pestañas de Chrome/navegador (coinciden por TÍTULO de la ventana) ---
         profile("gsheets", &["google sheets", "hojas de cálculo"], vec![
             b("Negrita", "bold", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
@@ -705,7 +718,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 26;
+const PROFILES_VERSION: u32 = 27;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -2091,7 +2104,28 @@ fn qr_svg(data: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{obs_request_for, parse_key};
+    use super::{default_profiles, obs_request_for, parse_key};
+
+    // Mismo predicado que layout_for: primer perfil cuyo `matches` aparece en "{app} {title}".
+    fn perfil_para<'a>(profiles: &'a [super::Profile], app: &str, title: &str) -> &'a str {
+        let hay = format!("{app} {title}").to_lowercase();
+        profiles
+            .iter()
+            .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
+            .or_else(|| profiles.iter().find(|p| p.matches.is_empty()))
+            .map(|p| p.id.as_str())
+            .unwrap_or("empty")
+    }
+
+    #[test]
+    fn perfil_ai_gana_a_terminal_por_titulo() {
+        let profiles = default_profiles();
+        // Claude Code fija el título de la terminal a "Claude" → perfil "ai".
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "Claude"), "ai");
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "codex — repo"), "ai");
+        // Una terminal normal (sin agente) NO debe caer en "ai".
+        assert_eq!(perfil_para(&profiles, "powershell", "pwsh"), "terminal");
+    }
 
     #[test]
     fn parsea_teclas() {
