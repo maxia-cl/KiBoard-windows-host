@@ -84,6 +84,12 @@ fn default_profiles() -> Vec<Profile> {
         profile("ai", &["claude", "codex", "aider", "gemini"], vec![
             b("Aceptar", "accept", "enter"), b("Rechazar", "close", "esc"),
             b("Subir", "scrollup", "up"), b("Bajar", "scrolldown", "down"),
+            // Cambiar modelo/esfuerzo/modo. Los dos primeros escriben el slash-command y abren
+            // el menú (Claude Code y Codex: /model, /effort); el usuario elige con Subir/Bajar/
+            // Aceptar. "Modo" cicla directo con shift+tab (Claude Code: manual→acceptar→auto→plan).
+            b("Modelo", "model", "type:/model>>enter"),
+            b("Esfuerzo", "effort", "type:/effort>>enter"),
+            b("Modo", "mode", "shift+tab"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
@@ -718,7 +724,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 27;
+const PROFILES_VERSION: u32 = 28;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
