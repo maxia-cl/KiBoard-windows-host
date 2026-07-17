@@ -84,11 +84,15 @@ fn default_profiles() -> Vec<Profile> {
         profile("ai", &["claude", "codex", "aider", "gemini"], vec![
             b("Aceptar", "accept", "enter"), b("Rechazar", "close", "esc"),
             b("Subir", "scrollup", "up"), b("Bajar", "scrolldown", "down"),
-            // Cambiar modelo/esfuerzo/modo. Los dos primeros escriben el slash-command y abren
-            // el menú (Claude Code y Codex: /model, /effort); el usuario elige con Subir/Bajar/
-            // Aceptar. "Modo" cicla directo con shift+tab (Claude Code: manual→acceptar→auto→plan).
-            b("Modelo", "model", "type:/model>>enter"),
-            b("Esfuerzo", "effort", "type:/effort>>enter"),
+            // Modelo/Esfuerzo: selector EN EL TELÉFONO (picker:) — la opción elegida escribe
+            // el slash-command con argumento directo (/model <id>, /effort <nivel>), sin navegar
+            // menús en el PC. wait:250 deja que el autocompletado del CLI procese el texto antes
+            // del enter. "Modo" cicla con shift+tab (no hay comando directo por modo; cada tap
+            // avanza uno y la terminal muestra el actual).
+            b("Modelo", "model",
+              "picker:Fable=type:/model claude-fable-5>>wait:250>>enter;Opus=type:/model claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model sonnet>>wait:250>>enter;Haiku=type:/model haiku>>wait:250>>enter"),
+            b("Esfuerzo", "effort",
+              "picker:Low=type:/effort low>>wait:250>>enter;Medium=type:/effort medium>>wait:250>>enter;High=type:/effort high>>wait:250>>enter;Max=type:/effort max>>wait:250>>enter"),
             b("Modo", "mode", "shift+tab"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
@@ -724,7 +728,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 28;
+const PROFILES_VERSION: u32 = 29;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -1470,6 +1474,13 @@ fn run_step(step: &str) -> Result<(), &'static str> {
     if step == "screenshot" {
         return take_screenshot();
     }
+    // "wait:<ms>" → pausa entre pasos de un macro (p. ej. dejar que el autocompletado de un
+    // CLI procese el texto antes del enter). Tope 2s para que un perfil malicioso no cuelgue.
+    if let Some(ms) = step.strip_prefix("wait:") {
+        let ms: u64 = ms.trim().parse().map_err(|_| "bad_wait")?;
+        std::thread::sleep(Duration::from_millis(ms.min(2000)));
+        return Ok(());
+    }
     if let Some(name) = step.strip_prefix("uia:") {
         return invoke_uia(name.trim());
     }
@@ -2131,6 +2142,12 @@ mod tests {
         assert_eq!(perfil_para(&profiles, "WindowsTerminal", "codex — repo"), "ai");
         // Una terminal normal (sin agente) NO debe caer en "ai".
         assert_eq!(perfil_para(&profiles, "powershell", "pwsh"), "terminal");
+    }
+
+    #[test]
+    fn wait_pausa_y_valida() {
+        assert!(super::run_step("wait:50").is_ok());
+        assert!(super::run_step("wait:abc").is_err());
     }
 
     #[test]
