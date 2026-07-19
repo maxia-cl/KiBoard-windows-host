@@ -93,9 +93,11 @@ fn default_profiles() -> Vec<Profile> {
               "picker:Fable=type:/model>>wait:400>>type: claude-fable-5>>wait:250>>enter;Opus=type:/model>>wait:400>>type: claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model>>wait:400>>type: sonnet>>wait:250>>enter;Haiku=type:/model>>wait:400>>type: haiku>>wait:250>>enter"),
             b("Esfuerzo", "effort",
               "picker:Low=type:/effort>>wait:400>>type: low>>wait:250>>enter;Medium=type:/effort>>wait:400>>type: medium>>wait:250>>enter;High=type:/effort>>wait:400>>type: high>>wait:250>>enter;Max=type:/effort>>wait:400>>type: max>>wait:250>>enter"),
-            // shift+tab lo intercepta Windows Terminal (no llega al TUI) → /permissions abre el
-            // selector de modo y se elige con Subir/Bajar/Aceptar de esta misma botonera.
-            b("Modo", "mode", "type:/permissions>>wait:400>>enter"),
+            // Modo: NO hay slash-command para cambiar el modo de permisos de forma persistente
+            // (/permissions abre un panel interactivo que no existe en la app de escritorio, y
+            // /plan solo planifica el siguiente prompt). Lo único persistente es ciclar con
+            // shift+tab — que ahora sale con el margen de modificador de run_hotkey.
+            b("Modo", "mode", "picker:Ciclar modo=shift+tab;Planificar respuesta=type:/plan>>wait:400>>enter"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
@@ -730,7 +732,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 30;
+const PROFILES_VERSION: u32 = 31;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -879,7 +881,22 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
             // Traducción al idioma del cliente (el hello trae el locale). Se traduce aquí, al
             // final, para cubrir también las etiquetas dinámicas de OBS.
             let label = i18n::tr(label);
-            let mut j = json!({ "id": i, "label": label, "action": action, "icon": icon, "danger": danger, "recommended": rec });
+            // Las etiquetas de las opciones de un "picker:" también se traducen (la acción de
+            // cada opción viaja intacta). Nombres propios (Opus, High…) caen a sí mismos.
+            let action_out = match action.strip_prefix("picker:") {
+                Some(rest) => {
+                    let opts: Vec<String> = rest
+                        .split(';')
+                        .map(|part| match part.split_once('=') {
+                            Some((name, act)) => format!("{}={}", i18n::tr(name.trim()), act),
+                            None => part.to_string(),
+                        })
+                        .collect();
+                    format!("picker:{}", opts.join(";"))
+                }
+                None => action.clone(),
+            };
+            let mut j = json!({ "id": i, "label": label, "action": action_out, "icon": icon, "danger": danger, "recommended": rec });
             if let Some(on) = on {
                 j["on"] = json!(on);
             }
@@ -1641,7 +1658,16 @@ fn run_hotkey(combo: &str) -> Result<(), &'static str> {
     for m in &mods {
         e.key(*m, Press).map_err(|_| "internal")?;
     }
+    // Margen entre el modificador y la tecla: las apps Electron (Claude Code, VS Code, Discord…)
+    // pierden el modificador si el evento llega en el mismo tick y procesan la tecla "pelada"
+    // (shift+tab llegaba como Tab y movía el foco en vez de cambiar de modo).
+    if !mods.is_empty() {
+        std::thread::sleep(Duration::from_millis(40));
+    }
     let res = e.key(key, Click);
+    if !mods.is_empty() {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     for m in mods.iter().rev() {
         let _ = e.key(*m, Release);
     }
