@@ -84,16 +84,18 @@ fn default_profiles() -> Vec<Profile> {
         profile("ai", &["claude", "codex", "aider", "gemini"], vec![
             b("Aceptar", "accept", "enter"), b("Rechazar", "close", "esc"),
             b("Subir", "scrollup", "up"), b("Bajar", "scrolldown", "down"),
-            // Modelo/Esfuerzo: selector EN EL TELÉFONO (picker:) — la opción elegida escribe
-            // el slash-command con argumento directo (/model <id>, /effort <nivel>), sin navegar
-            // menús en el PC. wait:250 deja que el autocompletado del CLI procese el texto antes
-            // del enter. "Modo" cicla con shift+tab (no hay comando directo por modo; cada tap
-            // avanza uno y la terminal muestra el actual).
+            // Modelo/Esfuerzo: selector EN EL TELÉFONO (picker:) — la opción elegida escribe el
+            // slash-command con argumento directo (/model <id>, /effort <nivel>).
+            // OJO (bug real, 2026-07): el comando y el argumento van en type: SEPARADOS con un
+            // wait entre medio. De un tirón ("type:/effort low") el autocompletado del TUI se
+            // come el espacio y sale "/effortlow" → comando desconocido.
             b("Modelo", "model",
-              "picker:Fable=type:/model claude-fable-5>>wait:250>>enter;Opus=type:/model claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model sonnet>>wait:250>>enter;Haiku=type:/model haiku>>wait:250>>enter"),
+              "picker:Fable=type:/model>>wait:400>>type: claude-fable-5>>wait:250>>enter;Opus=type:/model>>wait:400>>type: claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model>>wait:400>>type: sonnet>>wait:250>>enter;Haiku=type:/model>>wait:400>>type: haiku>>wait:250>>enter"),
             b("Esfuerzo", "effort",
-              "picker:Low=type:/effort low>>wait:250>>enter;Medium=type:/effort medium>>wait:250>>enter;High=type:/effort high>>wait:250>>enter;Max=type:/effort max>>wait:250>>enter"),
-            b("Modo", "mode", "shift+tab"),
+              "picker:Low=type:/effort>>wait:400>>type: low>>wait:250>>enter;Medium=type:/effort>>wait:400>>type: medium>>wait:250>>enter;High=type:/effort>>wait:400>>type: high>>wait:250>>enter;Max=type:/effort>>wait:400>>type: max>>wait:250>>enter"),
+            // shift+tab lo intercepta Windows Terminal (no llega al TUI) → /permissions abre el
+            // selector de modo y se elige con Subir/Bajar/Aceptar de esta misma botonera.
+            b("Modo", "mode", "type:/permissions>>wait:400>>enter"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
@@ -728,7 +730,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 29;
+const PROFILES_VERSION: u32 = 30;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
