@@ -93,11 +93,12 @@ fn default_profiles() -> Vec<Profile> {
               "picker:Fable=type:/model>>wait:400>>type: claude-fable-5>>wait:250>>enter;Opus=type:/model>>wait:400>>type: claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model>>wait:400>>type: sonnet>>wait:250>>enter;Haiku=type:/model>>wait:400>>type: haiku>>wait:250>>enter"),
             b("Esfuerzo", "effort",
               "picker:Low=type:/effort>>wait:400>>type: low>>wait:250>>enter;Medium=type:/effort>>wait:400>>type: medium>>wait:250>>enter;High=type:/effort>>wait:400>>type: high>>wait:250>>enter;Max=type:/effort>>wait:400>>type: max>>wait:250>>enter"),
-            // Modo: NO hay slash-command para cambiar el modo de permisos de forma persistente
-            // (/permissions abre un panel interactivo que no existe en la app de escritorio, y
-            // /plan solo planifica el siguiente prompt). Lo único persistente es ciclar con
-            // shift+tab — que ahora sale con el margen de modificador de run_hotkey.
-            b("Modo", "mode", "picker:Ciclar modo=shift+tab;Planificar respuesta=type:/plan>>wait:400>>enter"),
+            // Modo: abre el menú de modos de la app y se elige con Subir/Bajar/Aceptar de esta
+            // misma botonera. OJO: ctrl+alt+m NO es un atajo de fábrica — es un keybinding de
+            // usuario (~/.claude/keybindings.json → "ctrl+alt+m": "chat:cycleMode"); en la app
+            // de escritorio esa acción abre el menú de modos. shift+tab ahí hace navegación de
+            // foco (por eso nunca funcionó), y no existe slash-command ni acción por-modo.
+            b("Modo", "mode", "ctrl+alt+m"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
@@ -732,7 +733,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 31;
+const PROFILES_VERSION: u32 = 32;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
