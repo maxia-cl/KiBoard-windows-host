@@ -252,7 +252,42 @@ fn default_profiles() -> Vec<Profile> {
             bx("Formato", "format", "shift+alt+f"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
         ]),
-        profile("terminal", &["powershell", "windows terminal", "símbolo del sistema", "command prompt", "warp"], vec![
+        // --- Shells: el TÍTULO de la ventana identifica el shell activo (Windows Terminal lo
+        // cambia por pestaña: "Windows PowerShell", "C:\\...\\cmd.exe", "usuario@host: ~").
+        // Van ANTES del perfil "terminal" (emulador) para ganarle por título.
+        // Los comandos se teclean con type:...>>enter. REGLA: nada destructivo en el catálogo —
+        // el botón escribe en lo que esté enfocado (vim, un prompt de contraseña…), así que lo
+        // peor que puede pasar debe ser un "ls" de más.
+        profile("shell-pwsh", &["powershell", "pwsh"], vec![
+            b("Listar", "folder", "type:ls>>enter"),
+            b("Subir nivel", "back", "type:cd ..>>enter"),
+            b("Limpiar", "eraser", "type:cls>>enter"),
+            b("Git estado", "history", "type:git status>>enter"),
+            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            bx("Cancelar", "close", "ctrl+c"),
+            bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+        ]),
+        profile("shell-cmd", &["cmd.exe", "símbolo del sistema", "command prompt"], vec![
+            b("Listar", "folder", "type:dir>>enter"),
+            b("Subir nivel", "back", "type:cd ..>>enter"),
+            b("Limpiar", "eraser", "type:cls>>enter"),
+            bx("Dónde estoy", "pin", "type:cd>>enter"), // cmd sin args imprime el directorio
+            bx("Cancelar", "close", "ctrl+c"),
+            bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+        ]),
+        profile("shell-bash", &["wsl", "ubuntu", "debian", "bash", "mingw"], vec![
+            b("Listar", "folder", "type:ls -la>>enter"),
+            b("Subir nivel", "back", "type:cd ..>>enter"),
+            b("Limpiar", "eraser", "type:clear>>enter"),
+            b("Git estado", "history", "type:git status>>enter"),
+            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            bx("Cancelar", "close", "ctrl+c"),
+            bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+        ]),
+        // Emulador de terminal (pestañas/paneles/portapapeles). Fallback cuando el título no
+        // delata el shell. OJO: el nombre de proceso es "WindowsTerminal" SIN espacio — la
+        // cadena "windows terminal" nunca matcheaba (bug corregido 2026-07-19).
+        profile("terminal", &["windowsterminal", "terminal", "warp", "conhost"], vec![
             // OJO: ctrl+c en consola es SIGINT (mata el proceso). Windows Terminal/PowerShell
             // aceptan ctrl+shift+c/v para el portapapeles.
             b("Copiar", "copy", "ctrl+shift+c"), b("Pegar", "paste", "ctrl+shift+v"),
@@ -733,7 +768,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 32;
+const PROFILES_VERSION: u32 = 33;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -1529,6 +1564,17 @@ fn run_step(step: &str) -> Result<(), &'static str> {
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
         return e.move_mouse(dx, dy, Coordinate::Rel).map_err(|_| "internal");
     }
+    // "hold:left|right" / "release:left|right" → mantener y soltar el botón, para ARRASTRAR
+    // (mover ventanas, seleccionar texto, arrastrar archivos). El móvil los envía desde el
+    // botón "Arrastrar" del trackpad. OJO: si el botón queda presionado el escritorio se
+    // vuelve inusable, por eso el móvil suelta siempre al salir del trackpad.
+    if let Some(which) = step.strip_prefix("hold:").or_else(|| step.strip_prefix("release:")) {
+        use enigo::{Button, Direction, Enigo, Mouse, Settings};
+        let btn = if which.trim() == "right" { Button::Right } else { Button::Left };
+        let dir = if step.starts_with("hold:") { Direction::Press } else { Direction::Release };
+        let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
+        return e.button(btn, dir).map_err(|_| "internal");
+    }
     // "click:left|right" → clic del ratón (toque en el trackpad).
     if let Some(which) = step.strip_prefix("click:") {
         use enigo::{Button, Direction, Enigo, Mouse, Settings};
@@ -2170,7 +2216,26 @@ mod tests {
         assert_eq!(perfil_para(&profiles, "WindowsTerminal", "Claude"), "ai");
         assert_eq!(perfil_para(&profiles, "WindowsTerminal", "codex — repo"), "ai");
         // Una terminal normal (sin agente) NO debe caer en "ai".
-        assert_eq!(perfil_para(&profiles, "powershell", "pwsh"), "terminal");
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "Windows PowerShell"), "shell-pwsh");
+    }
+
+    // El TÍTULO identifica el shell activo (Windows Terminal lo cambia por pestaña). Títulos
+    // reales verificados en Windows 11.
+    #[test]
+    fn perfil_por_shell_segun_titulo() {
+        let profiles = default_profiles();
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "Windows PowerShell"), "shell-pwsh");
+        assert_eq!(perfil_para(&profiles, "cmd", r"C:\WINDOWS\system32\cmd.exe"), "shell-cmd");
+        assert_eq!(perfil_para(&profiles, "wsl", r"C:\WINDOWS\system32\wsl.exe"), "shell-bash");
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "Ubuntu"), "shell-bash");
+        // LIMITACIÓN CONOCIDA: si bash exporta su prompt al título ("usuario@host: ~") no queda
+        // ninguna palabra distintiva; añadir "@" como match secuestraría medio catálogo (Gmail,
+        // rutas con @…). Degrada al perfil de emulador, no al genérico — y el usuario puede
+        // añadir su propio match desde la UI del host.
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", "ricardo@DESKTOP: ~"), "terminal");
+        // Sin pista del shell en el título → perfil de emulador (antes caía al genérico porque
+        // "windows terminal" con espacio nunca matcheaba "WindowsTerminal").
+        assert_eq!(perfil_para(&profiles, "WindowsTerminal", ""), "terminal");
     }
 
     #[test]
