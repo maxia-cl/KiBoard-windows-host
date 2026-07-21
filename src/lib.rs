@@ -259,28 +259,32 @@ fn default_profiles() -> Vec<Profile> {
         // el botón escribe en lo que esté enfocado (vim, un prompt de contraseña…), así que lo
         // peor que puede pasar debe ser un "ls" de más.
         profile("shell-pwsh", &["powershell", "pwsh"], vec![
-            b("Listar", "folder", "type:ls>>enter"),
+            // OJO: "ls -lh" NO existe en PowerShell (ls = alias de Get-ChildItem; falla con
+            // "A parameter cannot be found that matches parameter name 'lh'"). El equivalente a
+            // "más información" es -Force, que además lista los ocultos.
+            b("Listar", "folder", "type:ls -Force>>enter"),
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:cls>>enter"),
-            b("Git estado", "history", "type:git status>>enter"),
-            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            b("Dónde estoy", "pin", "type:pwd>>enter"),
+            // Git estado va de EXTRA: fuera de un repo, "git status" solo imprime un error.
+            bx("Git estado", "history", "type:git status>>enter"),
             bx("Cancelar", "close", "ctrl+c"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
         profile("shell-cmd", &["cmd.exe", "símbolo del sistema", "command prompt"], vec![
-            b("Listar", "folder", "type:dir>>enter"),
+            b("Listar", "folder", "type:dir /a>>enter"), // /a incluye ocultos; dir ya da fecha y tamaño
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:cls>>enter"),
-            bx("Dónde estoy", "pin", "type:cd>>enter"), // cmd sin args imprime el directorio
+            b("Dónde estoy", "pin", "type:cd>>enter"), // cmd sin args imprime el directorio
             bx("Cancelar", "close", "ctrl+c"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
         profile("shell-bash", &["wsl", "ubuntu", "debian", "bash", "mingw"], vec![
-            b("Listar", "folder", "type:ls -la>>enter"),
+            b("Listar", "folder", "type:ls -lh>>enter"), // -l detalle, -h tamaños legibles
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:clear>>enter"),
-            b("Git estado", "history", "type:git status>>enter"),
-            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            b("Dónde estoy", "pin", "type:pwd>>enter"),
+            bx("Git estado", "history", "type:git status>>enter"), // extra: solo útil en un repo
             bx("Cancelar", "close", "ctrl+c"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
@@ -768,7 +772,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 33;
+const PROFILES_VERSION: u32 = 34;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
