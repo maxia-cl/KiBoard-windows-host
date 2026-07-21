@@ -258,6 +258,9 @@ fn default_profiles() -> Vec<Profile> {
         // Los comandos se teclean con type:...>>enter. REGLA: nada destructivo en el catálogo —
         // el botón escribe en lo que esté enfocado (vim, un prompt de contraseña…), así que lo
         // peor que puede pasar debe ser un "ls" de más.
+        // Set pensado como "usuario diario de consola" desde el TELÉFONO: lo más valioso no son
+        // comandos tecleados sino ↑ (historial) + Ejecutar → re-lanzar el build/servidor sin
+        // tocar el teclado. Cancelar (ctrl+c) para cortar algo colgado estando lejos del PC.
         profile("shell-pwsh", &["powershell", "pwsh"], vec![
             // OJO: "ls -lh" NO existe en PowerShell (ls = alias de Get-ChildItem; falla con
             // "A parameter cannot be found that matches parameter name 'lh'"). El equivalente a
@@ -265,27 +268,51 @@ fn default_profiles() -> Vec<Profile> {
             b("Listar", "folder", "type:ls -Force>>enter"),
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:cls>>enter"),
-            b("Dónde estoy", "pin", "type:pwd>>enter"),
-            // Git estado va de EXTRA: fuera de un repo, "git status" solo imprime un error.
-            bx("Git estado", "history", "type:git status>>enter"),
-            bx("Cancelar", "close", "ctrl+c"),
+            b("Anterior", "scrollup", "up"),      // historial: recupera el último comando
+            b("Ejecutar", "play", "enter"),        // ...y lo lanza. El combo clave desde el móvil.
+            b("Cancelar", "close", "ctrl+c"),
+            bx("Siguiente", "scrolldown", "down"),
+            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            bx("Autocompletar", "tab", "tab"),     // útil tras dictar una ruta a medias
+            // Git: solo tienen sentido dentro de un repo → todos extras.
+            bx("Git estado", "find", "type:git status>>enter"),
+            bx("Git pull", "download", "type:git pull>>enter"),
+            bx("Git push", "upload", "type:git push>>enter"),
+            bx("Git log", "history", "type:git log --oneline -10>>enter"),
+            bx("Git diff", "replace", "type:git diff>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
         profile("shell-cmd", &["cmd.exe", "símbolo del sistema", "command prompt"], vec![
             b("Listar", "folder", "type:dir /a>>enter"), // /a incluye ocultos; dir ya da fecha y tamaño
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:cls>>enter"),
-            b("Dónde estoy", "pin", "type:cd>>enter"), // cmd sin args imprime el directorio
-            bx("Cancelar", "close", "ctrl+c"),
+            b("Anterior", "scrollup", "up"),
+            b("Ejecutar", "play", "enter"),
+            b("Cancelar", "close", "ctrl+c"),
+            bx("Siguiente", "scrolldown", "down"),
+            bx("Dónde estoy", "pin", "type:cd>>enter"), // cmd sin args imprime el directorio
+            bx("Autocompletar", "tab", "tab"),
+            bx("Git estado", "find", "type:git status>>enter"),
+            bx("Git pull", "download", "type:git pull>>enter"),
+            bx("Git push", "upload", "type:git push>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
         profile("shell-bash", &["wsl", "ubuntu", "debian", "bash", "mingw"], vec![
             b("Listar", "folder", "type:ls -lh>>enter"), // -l detalle, -h tamaños legibles
             b("Subir nivel", "back", "type:cd ..>>enter"),
             b("Limpiar", "eraser", "type:clear>>enter"),
-            b("Dónde estoy", "pin", "type:pwd>>enter"),
-            bx("Git estado", "history", "type:git status>>enter"), // extra: solo útil en un repo
-            bx("Cancelar", "close", "ctrl+c"),
+            b("Anterior", "scrollup", "up"),
+            b("Ejecutar", "play", "enter"),
+            b("Cancelar", "close", "ctrl+c"),
+            bx("Siguiente", "scrolldown", "down"),
+            bx("Dónde estoy", "pin", "type:pwd>>enter"),
+            bx("Autocompletar", "tab", "tab"),
+            bx("Carpeta anterior", "undo", "type:cd ->>enter"), // solo bash: alterna dos carpetas
+            bx("Git estado", "find", "type:git status>>enter"),
+            bx("Git pull", "download", "type:git pull>>enter"),
+            bx("Git push", "upload", "type:git push>>enter"),
+            bx("Git log", "history", "type:git log --oneline -10>>enter"),
+            bx("Git diff", "replace", "type:git diff>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
         ]),
         // Emulador de terminal (pestañas/paneles/portapapeles). Fallback cuando el título no
@@ -772,7 +799,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 34;
+const PROFILES_VERSION: u32 = 35;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
@@ -857,7 +884,9 @@ fn now_ts() -> u64 {
 
 /// Construye el JSON de layout para la app dada, según los perfiles. Matchea contra el nombre de la
 /// app Y el título de la ventana (esto habilita sub-perfiles por pestaña, p. ej. Google Sheets).
-fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
+/// `shell` = shell detectado en el árbol de procesos de la ventana (ver detect_shell_kind);
+/// manda sobre el título, que miente cuando corres otro shell dentro de una pestaña.
+fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -> String {
     // Elegir perfil y COPIAR sus botones (id, label, action, icon, danger, recommended); soltar el
     // lock antes de consultar UIA (lento) para no bloquear al resto.
     // Estado de OBS: si está grabando o en directo, el perfil "obs" se PINEA aunque la ventana al
@@ -867,7 +896,16 @@ fn layout_for(app: &str, title: &str, icon_b64: &str) -> String {
     let (profile_id, raw): (String, Vec<(usize, String, String, String, bool, bool)>) = {
         let cfg = config().lock().unwrap();
         let hay = format!("{app} {title}").to_lowercase();
+        // Prioridad: OBS en vivo > agente de IA por título > shell REAL detectado > título > genérico.
+        // El agente va antes que el shell porque corre DENTRO de la terminal y sus botones
+        // (Aceptar/Rechazar/Modelo) son más relevantes que los del shell que lo hospeda.
         let profile = if obs_live { cfg.profiles.iter().find(|p| p.id == "obs") } else { None }
+            .or_else(|| {
+                cfg.profiles.iter().find(|p| {
+                    p.id == "ai" && p.matches.iter().any(|m| hay.contains(&m.to_lowercase()))
+                })
+            })
+            .or_else(|| shell.and_then(|id| cfg.profiles.iter().find(|p| p.id == id)))
             .or_else(|| {
                 cfg.profiles
                     .iter()
@@ -1025,15 +1063,93 @@ fn extract_icon_b64(path: &str) -> String {
     b64.rsplit(',').next().unwrap_or("").to_string()
 }
 
+/// ¿Qué shell corre DENTRO de la ventana en primer plano? Devuelve el id del perfil
+/// ("shell-pwsh" | "shell-cmd" | "shell-bash").
+///
+/// Por qué no basta el título: Windows Terminal lo cambia por pestaña, pero MIENTE en cuanto
+/// corres otro shell dentro (un `wsl` dentro de una pestaña pwsh deja el título "Windows
+/// PowerShell" y le mandaríamos `ls -Force` a bash). Aquí se mira el árbol de procesos real:
+/// el shell es un descendiente del proceso de la ventana (WindowsTerminal → OpenConsole → pwsh).
+///
+/// Devuelve None si hay AMBIGÜEDAD (p. ej. una pestaña pwsh y otra bash abiertas a la vez): el
+/// árbol no dice cuál está al frente, así que en ese caso decide el título, que sí lo refleja.
+fn detect_shell_kind(root_pid: u32) -> Option<&'static str> {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    if root_pid == 0 {
+        return None;
+    }
+    // (pid, parent_pid, exe) de todos los procesos.
+    let mut procs: Vec<(u32, u32, String)> = Vec::new();
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let exe = String::from_utf16_lossy(&entry.szExeFile[..end]).to_lowercase();
+                procs.push((entry.th32ProcessID, entry.th32ParentProcessID, exe));
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snap);
+    }
+    let kind_of = |exe: &str| -> Option<&'static str> {
+        match exe {
+            "powershell.exe" | "pwsh.exe" => Some("shell-pwsh"),
+            "cmd.exe" => Some("shell-cmd"),
+            // wsl.exe/ubuntu.exe son procesos Windows aunque el shell viva en la VM.
+            "bash.exe" | "wsl.exe" | "ubuntu.exe" | "debian.exe" | "zsh.exe" | "fish.exe" => {
+                Some("shell-bash")
+            }
+            _ => None,
+        }
+    };
+    // Descendientes de la ventana (+ la propia ventana: una consola suelta ES el shell).
+    let mut tree: Vec<u32> = vec![root_pid];
+    let mut found: Vec<&'static str> = Vec::new();
+    let mut i = 0;
+    while i < tree.len() && i < 400 {
+        let pid = tree[i];
+        i += 1;
+        for (p, parent, exe) in &procs {
+            if *p == pid {
+                if let Some(k) = kind_of(exe) {
+                    if !found.contains(&k) {
+                        found.push(k);
+                    }
+                }
+            }
+            if *parent == pid && !tree.contains(p) {
+                tree.push(*p);
+            }
+        }
+    }
+    // Un solo tipo de shell = certeza. Varios = que decida el título.
+    if found.len() == 1 { Some(found[0]) } else { None }
+}
+
 /// Sondea la app en primer plano y publica el layout cuando cambia (de app o por edición de perfiles).
 async fn watch_active_app() {
     let mut last_app = String::new();
     let mut icon = String::new();
     let mut last_layout = String::new();
     loop {
-        let (app, title, path) = match active_win_pos_rs::get_active_window() {
-            Ok(w) => (w.app_name, w.title, w.process_path.to_string_lossy().to_string()),
-            Err(_) => (String::new(), String::new(), String::new()),
+        let (app, title, path, pid) = match active_win_pos_rs::get_active_window() {
+            Ok(w) => (
+                w.app_name,
+                w.title,
+                w.process_path.to_string_lossy().to_string(),
+                w.process_id as u32,
+            ),
+            Err(_) => (String::new(), String::new(), String::new(), 0),
         };
         if app != last_app {
             last_app = app.clone();
@@ -1041,7 +1157,8 @@ async fn watch_active_app() {
         }
         let layout = {
             let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
-            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic))
+            // detect_shell_kind recorre el árbol de procesos → al hilo bloqueante, como el resto.
+            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic, detect_shell_kind(pid)))
                 .await
                 .unwrap_or_default()
         };
@@ -2390,4 +2507,15 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+#[cfg(test)]
+mod shell_detect_tests {
+    /// Sonda manual: imprime el shell detectado para el PID que se pase por env.
+    /// `PID=1234 cargo test sonda_shell -- --nocapture --ignored`
+    #[test]
+    #[ignore]
+    fn sonda_shell() {
+        let pid: u32 = std::env::var("PID").unwrap().parse().unwrap();
+        println!("PID {pid} -> {:?}", super::detect_shell_kind(pid));
+    }
 }
