@@ -99,6 +99,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Destacar", "Star", "加星"),
     ("Detener grab.", "Stop rec.", "停止录制"),
     ("Directo", "Stream", "直播"),
+    ("Dictar", "Dictate", "语音输入"),
     ("Dónde estoy", "Where am I", "当前路径"),
     ("Dividir", "Split", "分割"),
     ("Duplicar", "Duplicate", "创建副本"),

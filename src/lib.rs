@@ -101,6 +101,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Modo", "mode", "ctrl+alt+m"),
             bx("Nueva línea", "text", "shift+enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         // --- Pestañas de Chrome/navegador (coinciden por TÍTULO de la ventana) ---
         profile("gsheets", &["google sheets", "hojas de cálculo"], vec![
@@ -109,6 +110,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
             bx("Cortar", "cut", "ctrl+x"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("gdocs", &["google docs", "documentos de google"], vec![
             b("Negrita", "bold", "ctrl+b"), b("Buscar", "find", "ctrl+f"),
@@ -116,6 +118,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
             bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("gdrive", &["google drive", "mi unidad"], vec![
             b("Buscar", "find", "ctrl+f"), b("Nueva pestaña", "new", "ctrl+t"),
@@ -128,6 +131,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Responder", "reply", "r"), b("Archivar", "archive", "e"),
             bx("Resp. todos", "replyall", "a"), bx("Reenviar", "forward", "f"),
             bx("Eliminar", "delete", "#"), bx("Destacar", "star", "s"), bx("Enviar", "send", "ctrl+enter"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("youtube", &["youtube"], vec![
             b("Play/Pausa", "play", "k"), b("Silenciar", "mute", "m"),
@@ -143,6 +147,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Cursiva", "italic", "ctrl+i"), bx("Subrayado", "underline", "ctrl+u"),
             bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+y"), bx("Imprimir", "print", "ctrl+p"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("excel", &["excel"], vec![
             b("Guardar", "save", "ctrl+s"), b("Buscar", "find", "ctrl+f"),
@@ -150,6 +155,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Negrita", "bold", "ctrl+b"), bx("Cursiva", "italic", "ctrl+i"),
             bx("Autosuma", "sum", "alt+="), bx("Filtro", "filter", "ctrl+shift+l"), bx("Imprimir", "print", "ctrl+p"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("powerpoint", &["powerpoint"], vec![
             // Pack presentador: el uso remoto #1 — pasar diapositivas desde el atril.
@@ -165,6 +171,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Enviar", "send", "ctrl+enter"), b("Buscar", "find", "ctrl+e"),
             bx("Resp. todos", "replyall", "ctrl+shift+r"), bx("Reenviar", "forward", "ctrl+f"),
             bx("Eliminar", "delete", "ctrl+d"), bx("Calendario", "calendar", "ctrl+2"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("acrobat", &["acrobat"], vec![
             b("Buscar", "find", "ctrl+f"), b("Imprimir", "print", "ctrl+p"),
@@ -203,12 +210,14 @@ fn default_profiles() -> Vec<Profile> {
             b("Hilos", "comment", "ctrl+shift+t"), b("Copiar", "copy", "ctrl+c"),
             bx("Cursiva", "italic", "ctrl+i"), bx("Buscar", "find", "ctrl+f"),
             bx("Subir archivo", "upload", "ctrl+u"), bx("Editar último", "redo", "ctrl+up"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("discord", &["discord"], vec![
             b("Silenciar", "mute", "ctrl+shift+m"), b("Audio", "video", "ctrl+shift+d"),
             b("Buscar", "find", "ctrl+f"),
             bx("Sgte canal", "next", "alt+down"), bx("Canal ant.", "prev", "alt+up"),
             bx("Marcar leído", "close", "escape"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("teams", &["teams"], vec![
             b("Silenciar", "mic", "ctrl+shift+m"), b("Cámara", "video", "ctrl+shift+o"),
@@ -228,6 +237,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Deshacer", "undo", "ctrl+z"), b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cursiva", "italic", "ctrl+i"), bx("Nueva página", "new", "ctrl+n"),
             bx("Enlace", "link", "ctrl+k"), bx("Rehacer", "redo", "ctrl+shift+z"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         // --- Multimedia ---
         profile("spotify", &["spotify"], vec![
@@ -251,6 +261,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Terminal", "terminal", "ctrl+`"), bx("Ir a línea", "find", "ctrl+g"),
             bx("Formato", "format", "shift+alt+f"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         // --- Shells: el TÍTULO de la ventana identifica el shell activo (Windows Terminal lo
         // cambia por pestaña: "Windows PowerShell", "C:\\...\\cmd.exe", "usuario@host: ~").
@@ -281,6 +292,8 @@ fn default_profiles() -> Vec<Profile> {
             bx("Git log", "history", "type:git log --oneline -10>>enter"),
             bx("Git diff", "replace", "type:git diff>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+            bx("Nueva carpeta", "newfolder", "prompt:Nombre de la carpeta=type:mkdir {}>>enter"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("shell-cmd", &["cmd.exe", "símbolo del sistema", "command prompt"], vec![
             b("Listar", "folder", "type:dir /a>>enter"), // /a incluye ocultos; dir ya da fecha y tamaño
@@ -296,6 +309,8 @@ fn default_profiles() -> Vec<Profile> {
             bx("Git pull", "download", "type:git pull>>enter"),
             bx("Git push", "upload", "type:git push>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+            bx("Nueva carpeta", "newfolder", "prompt:Nombre de la carpeta=type:md {}>>enter"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("shell-bash", &["wsl", "ubuntu", "debian", "bash", "mingw"], vec![
             b("Listar", "folder", "type:ls -lh>>enter"), // -l detalle, -h tamaños legibles
@@ -314,6 +329,8 @@ fn default_profiles() -> Vec<Profile> {
             bx("Git log", "history", "type:git log --oneline -10>>enter"),
             bx("Git diff", "replace", "type:git diff>>enter"),
             bx("Copiar", "copy", "ctrl+shift+c"), bx("Pegar", "paste", "ctrl+shift+v"),
+            bx("Nueva carpeta", "newfolder", "prompt:Nombre de la carpeta=type:mkdir {}>>enter"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         // Emulador de terminal (pestañas/paneles/portapapeles). Fallback cuando el título no
         // delata el shell. OJO: el nombre de proceso es "WindowsTerminal" SIN espacio — la
@@ -333,6 +350,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Ir a línea", "find", "ctrl+g"), bx("Duplicar línea", "new", "ctrl+d"),
             bx("Comentar", "comment", "ctrl+q"), bx("Imprimir", "print", "ctrl+p"), bx("Guardar todo", "save", "ctrl+shift+s"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("explorer", &["explorador", "file explorer", "explorer"], vec![
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
@@ -346,6 +364,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Nuevo chat", "new", "ctrl+shift+o"), b("Barra lateral", "tab", "ctrl+shift+s"),
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Borrar chat", "delete", "ctrl+shift+backspace"), bx("Enfocar entrada", "text", "shift+escape"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("gcalendar", &["google calendar"], vec![
             b("Crear", "new", "c"), b("Hoy", "home", "t"), b("Buscar", "find", "/"), b("Semana", "tab", "w"),
@@ -371,6 +390,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Reemplazar", "replace", "ctrl+h"), bx("Comentar", "comment", "ctrl+/"),
             bx("Duplicar línea", "duplicate", "ctrl+shift+d"), bx("Ir a línea", "find", "ctrl+g"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("obsidian", &["obsidian"], vec![
             b("Nueva nota", "new", "ctrl+n"), b("Cambiador", "find", "ctrl+o"),
@@ -514,6 +534,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Nuevo chat", "new", "ctrl+n"), b("Buscar", "find", "ctrl+f"),
             b("Sgte chat", "next", "ctrl+shift+]"), b("Chat ant.", "prev", "ctrl+shift+["),
             bx("Archivar", "archive", "ctrl+e"), bx("Silenciar", "mute", "ctrl+shift+m"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("twitch", &["twitch"], vec![
             b("Play/Pausa", "play", "space"), b("Silenciar", "mute", "m"),
@@ -600,6 +621,7 @@ fn default_profiles() -> Vec<Profile> {
             b("Copiar", "copy", "ctrl+c"), b("Pegar", "paste", "ctrl+v"),
             bx("Cortar", "cut", "ctrl+x"), bx("Ir a línea", "find", "ctrl+g"), bx("Imprimir", "print", "ctrl+p"),
             bx("Sel. todo", "selectall", "ctrl+a"), bxd("Eliminar", "delete", "delete"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         profile("sumatra", &["sumatra"], vec![
             b("Buscar", "find", "ctrl+f"), b("Ir a página", "find", "ctrl+g"),
@@ -773,6 +795,7 @@ fn default_profiles() -> Vec<Profile> {
             bx("Reabrir pestaña", "redo", "ctrl+shift+t"), bx("Favorito", "star", "ctrl+d"),
             bx("Historial", "history", "ctrl+h"), bx("Descargas", "download", "ctrl+j"),
             bx("Incógnito", "new", "ctrl+shift+n"), bx("Zoom +", "zoomin", "ctrl+add"), bx("Zoom -", "zoomout", "ctrl+subtract"),
+            bx("Dictar", "mic", "dictate"),
         ]),
         // --- Fallback (app no reconocida). Volumen y captura viven en el dock fijo del móvil;
         // Play/Pausa solo en perfiles de apps que reproducen (no pinta nada en un Word). ---
@@ -799,7 +822,7 @@ fn default_profiles() -> Vec<Profile> {
 
 /// Versión de los perfiles integrados. Subir cuando se cambian los `default_profiles`
 /// para que se refresquen en hosts ya instalados (conservando token y emparejamiento).
-const PROFILES_VERSION: u32 = 35;
+const PROFILES_VERSION: u32 = 36;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
