@@ -1071,9 +1071,14 @@ fn extract_icon_b64(path: &str) -> String {
 /// PowerShell" y le mandaríamos `ls -Force` a bash). Aquí se mira el árbol de procesos real:
 /// el shell es un descendiente del proceso de la ventana (WindowsTerminal → OpenConsole → pwsh).
 ///
-/// Devuelve None si hay AMBIGÜEDAD (p. ej. una pestaña pwsh y otra bash abiertas a la vez): el
-/// árbol no dice cuál está al frente, así que en ese caso decide el título, que sí lo refleja.
-fn detect_shell_kind(root_pid: u32) -> Option<&'static str> {
+/// Regla: gana el shell MÁS PROFUNDO del árbol. Si dentro de PowerShell corres `wsl`, estás
+/// escribiendo en bash (caso real: WindowsTerminal → powershell.exe → wsl.exe, con el título
+/// aún diciendo "Windows PowerShell"). Si hay empate a la misma profundidad (dos pestañas de
+/// shells distintos) desempata el título, que sí refleja la pestaña activa.
+///
+/// Limitación conocida: si un shell anidado vive en una pestaña de FONDO, gana por profundidad
+/// aunque no sea la pestaña activa. El árbol de procesos no expone qué pestaña está al frente.
+fn detect_shell_kind(root_pid: u32, title: &str) -> Option<&'static str> {
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
@@ -1101,7 +1106,13 @@ fn detect_shell_kind(root_pid: u32) -> Option<&'static str> {
         }
         let _ = windows::Win32::Foundation::CloseHandle(snap);
     }
-    let kind_of = |exe: &str| -> Option<&'static str> {
+    pick_shell(&procs, root_pid, title)
+}
+
+/// Parte pura de `detect_shell_kind` (recibe la lista de procesos) para poder testearla con
+/// árboles reales sin depender de lo que corra en la máquina.
+fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> Option<&'static str> {
+    fn kind_of(exe: &str) -> Option<&'static str> {
         match exe {
             "powershell.exe" | "pwsh.exe" => Some("shell-pwsh"),
             "cmd.exe" => Some("shell-cmd"),
@@ -1111,29 +1122,58 @@ fn detect_shell_kind(root_pid: u32) -> Option<&'static str> {
             }
             _ => None,
         }
-    };
-    // Descendientes de la ventana (+ la propia ventana: una consola suelta ES el shell).
-    let mut tree: Vec<u32> = vec![root_pid];
-    let mut found: Vec<&'static str> = Vec::new();
+    }
+    // Recorrido en anchura guardando la PROFUNDIDAD (la propia ventana cuenta: una consola
+    // suelta ES el shell).
+    let mut queue: Vec<(u32, u32)> = vec![(root_pid, 0)];
+    let mut seen: Vec<u32> = vec![root_pid];
+    let mut found: Vec<(&'static str, u32)> = Vec::new(); // (shell, profundidad)
     let mut i = 0;
-    while i < tree.len() && i < 400 {
-        let pid = tree[i];
+    while i < queue.len() && i < 400 {
+        let (pid, depth) = queue[i];
         i += 1;
-        for (p, parent, exe) in &procs {
+        for (p, parent, exe) in procs {
             if *p == pid {
                 if let Some(k) = kind_of(exe) {
-                    if !found.contains(&k) {
-                        found.push(k);
-                    }
+                    found.push((k, depth));
                 }
             }
-            if *parent == pid && !tree.contains(p) {
-                tree.push(*p);
+            if *parent == pid && !seen.contains(p) {
+                seen.push(*p);
+                queue.push((*p, depth + 1));
             }
         }
     }
-    // Un solo tipo de shell = certeza. Varios = que decida el título.
-    if found.len() == 1 { Some(found[0]) } else { None }
+    let maxd = found.iter().map(|(_, d)| *d).max()?;
+    let mut deepest: Vec<&'static str> = found
+        .iter()
+        .filter(|(_, d)| *d == maxd)
+        .map(|(k, _)| *k)
+        .collect();
+    deepest.dedup();
+    deepest.sort_unstable();
+    deepest.dedup();
+    if deepest.len() == 1 {
+        return Some(deepest[0]);
+    }
+    // Empate (p. ej. una pestaña pwsh y otra bash): desempata el título, que sí refleja la
+    // pestaña activa. Aquí "@"/"~" son pistas seguras porque solo elegimos ENTRE shells que ya
+    // sabemos que corren en esta ventana (no se comparan contra todo el catálogo).
+    let t = title.to_lowercase();
+    let hint = |k: &str| -> bool {
+        match k {
+            "shell-bash" => ["wsl", "ubuntu", "debian", "bash", "mingw", "@", "~"]
+                .iter()
+                .any(|s| t.contains(s)),
+            "shell-pwsh" => t.contains("powershell") || t.contains("pwsh"),
+            "shell-cmd" => {
+                t.contains("cmd") || t.contains("símbolo del sistema") || t.contains("command prompt")
+            }
+            _ => false,
+        }
+    };
+    let matches: Vec<&&str> = deepest.iter().filter(|k| hint(k)).collect();
+    if matches.len() == 1 { Some(*matches[0]) } else { None }
 }
 
 /// Sondea la app en primer plano y publica el layout cuando cambia (de app o por edición de perfiles).
@@ -1158,7 +1198,7 @@ async fn watch_active_app() {
         let layout = {
             let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
             // detect_shell_kind recorre el árbol de procesos → al hilo bloqueante, como el resto.
-            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic, detect_shell_kind(pid)))
+            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic, detect_shell_kind(pid, &t)))
                 .await
                 .unwrap_or_default()
         };
@@ -2510,12 +2550,60 @@ pub fn run() {
 }
 #[cfg(test)]
 mod shell_detect_tests {
-    /// Sonda manual: imprime el shell detectado para el PID que se pase por env.
+    use super::pick_shell;
+
+    fn procs(v: &[(u32, u32, &str)]) -> Vec<(u32, u32, String)> {
+        v.iter().map(|(a, b, c)| (*a, *b, c.to_string())).collect()
+    }
+
+    /// Caso REAL capturado en la máquina del usuario: `wsl` corriendo DENTRO de la pestaña de
+    /// PowerShell, con el título aún diciendo "Windows PowerShell". El shell más profundo manda.
+    #[test]
+    fn wsl_anidado_en_powershell_gana_por_profundidad() {
+        let p = procs(&[
+            (12656, 1, "windowsterminal.exe"),
+            (20816, 12656, "openconsole.exe"),
+            (12516, 12656, "powershell.exe"),
+            (15792, 12516, "wsl.exe"),
+            (14856, 15792, "wsl.exe"),
+        ]);
+        assert_eq!(pick_shell(&p, 12656, "Windows PowerShell"), Some("shell-bash"));
+    }
+
+    /// Dos pestañas de shells distintos: misma profundidad → desempata el título (que sí
+    /// refleja la pestaña activa).
+    #[test]
+    fn dos_pestanas_desempata_el_titulo() {
+        let p = procs(&[
+            (100, 1, "windowsterminal.exe"),
+            (200, 100, "powershell.exe"),
+            (300, 100, "wsl.exe"),
+        ]);
+        assert_eq!(pick_shell(&p, 100, "Windows PowerShell"), Some("shell-pwsh"));
+        assert_eq!(pick_shell(&p, 100, "ricardo@DESKTOP: ~"), Some("shell-bash"));
+        assert_eq!(pick_shell(&p, 100, "Ubuntu"), Some("shell-bash"));
+        assert_eq!(pick_shell(&p, 100, "algo sin pistas"), None); // no adivinar
+    }
+
+    /// Consola suelta: la propia ventana ES el shell.
+    #[test]
+    fn consola_suelta() {
+        let p = procs(&[(500, 1, "cmd.exe")]);
+        assert_eq!(pick_shell(&p, 500, ""), Some("shell-cmd"));
+        let p2 = procs(&[(600, 1, "wsl.exe")]);
+        assert_eq!(pick_shell(&p2, 600, ""), Some("shell-bash"));
+        // Una ventana que no es terminal no debe inventar shell.
+        let p3 = procs(&[(700, 1, "notepad.exe")]);
+        assert_eq!(pick_shell(&p3, 700, ""), None);
+    }
+
+    /// Sonda manual contra los procesos vivos:
     /// `PID=1234 cargo test sonda_shell -- --nocapture --ignored`
     #[test]
     #[ignore]
     fn sonda_shell() {
         let pid: u32 = std::env::var("PID").unwrap().parse().unwrap();
-        println!("PID {pid} -> {:?}", super::detect_shell_kind(pid));
+        let title = std::env::var("TITLE").unwrap_or_default();
+        println!("PID {pid} -> {:?}", super::detect_shell_kind(pid, &title));
     }
 }

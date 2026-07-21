@@ -1068,7 +1068,7 @@ dependencies = [
 
 [[package]]
 name = "desktop"
-version = "0.1.27"
+version = "0.1.28"
 dependencies = [
  "active-win-pos-rs",
  "base64 0.22.1",
