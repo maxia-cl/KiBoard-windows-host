@@ -1,0 +1,27 @@
+# Rust / Tauri
+target/
+**/*.rs.bk
+src-tauri/gen/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Generated from KiBoard-protocol/deck-tokens.json — never edit by hand, never commit
+src/tokens.g.css
+
+# Runtime state: holds pairing tokens. Never commit.
+config.json
+config.v1.bak
+
+# Signing keys for the updater must never be committed
+*.key
+*.pem
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
