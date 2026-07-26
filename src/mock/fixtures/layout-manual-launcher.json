@@ -1,0 +1,66 @@
+{
+  "v": 2,
+  "type": "layout",
+  "mode": "manual",
+  "source": { "kind": "deck", "id": "launcher", "name": "Launcher" },
+  "grid": { "rows": 3, "cols": 5 },
+  "page": 0,
+  "pages": 2,
+  "keys": [
+    {
+      "pos": 0,
+      "label": "Photoshop",
+      "icon": "app",
+      "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "action": "launch:Adobe.Photoshop_ekt8g6hxevw36!App",
+      "hold": "focus:Adobe.Photoshop_ekt8g6hxevw36!App",
+      "kind": "action"
+    },
+    {
+      "pos": 1,
+      "label": "Excel",
+      "icon": "app",
+      "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "action": "launch:Microsoft.Office.EXCEL.EXE",
+      "kind": "action"
+    },
+    {
+      "pos": 2,
+      "label": "Slack",
+      "icon": "app",
+      "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "action": "launch:Slack.exe",
+      "kind": "action"
+    },
+    {
+      "pos": 3,
+      "label": "Chrome",
+      "icon": "app",
+      "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "action": "launch:chrome.exe",
+      "kind": "action"
+    },
+    { "pos": 4, "label": "OBS", "icon": "folder", "kind": "folder" },
+
+    { "pos": 5, "label": "Mute mic", "icon": "mic", "action": "obs:mute_toggle:mic", "state": { "on": false }, "kind": "action" },
+    { "pos": 6, "label": "Volume", "icon": "volume", "action": "vol:toggle_mute", "kind": "action" },
+    { "pos": 7, "label": "Windows", "icon": "windows", "action": "windows", "kind": "action" },
+    { "pos": 8, "label": "Screenshot", "icon": "screenshot", "action": "screenshot", "kind": "action" },
+    { "pos": 9, "label": "Auto", "icon": "mode", "action": "mode:auto", "kind": "action" },
+
+    { "pos": 10, "kind": "empty" },
+    { "pos": 11, "kind": "empty" },
+    {
+      "pos": 12,
+      "label": "Quit Photoshop",
+      "icon": "close",
+      "color": "#B22420",
+      "action": "kill:Adobe.Photoshop_ekt8g6hxevw36!App",
+      "danger": true,
+      "kind": "action"
+    },
+    { "pos": 13, "kind": "empty" },
+    { "pos": 14, "label": "More", "icon": "page", "action": "deck:launcher", "kind": "page" }
+  ],
+  "sys": { "vol": 42, "muted": false }
+}

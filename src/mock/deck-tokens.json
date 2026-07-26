@@ -1,0 +1,74 @@
+{
+  "$comment": "Visual language of the Stream Deck device. Shared byte-for-byte by KiBoard-app (Flutter) and KiBoard-windows-host (Svelte editor). See docs/implementation-plan.md §3.0.",
+  "v": 1,
+
+  "colors": {
+    "accent": "#B22420",
+    "bezel": "#1A1A1C",
+    "bezelGradientFrom": "#232326",
+    "bezelGradientTo": "#141416",
+    "keyDefaultBackground": "#2C2C2E",
+    "keyEmptyBackground": "#242426",
+    "keyDangerBackground": "#B22420",
+    "textPrimary": "#F2F2F2",
+    "textSecondary": "#8A8A8E",
+    "stateOn": "#2ECC71",
+    "pageDotActive": "#B22420",
+    "pageDotInactive": "#4A4A4C"
+  },
+
+  "bezel": {
+    "backgroundColor": "bezel",
+    "gradientFrom": "bezelGradientFrom",
+    "gradientTo": "bezelGradientTo",
+    "gradientAngleDeg": 180,
+    "cornerRadiusPx": 24,
+    "paddingTopPx": 20,
+    "paddingSidePx": 20,
+    "paddingBottomPx": 40,
+    "logoText": "KiBoard",
+    "logoColor": "textSecondary"
+  },
+
+  "key": {
+    "sizePx": 72,
+    "aspectRatio": 1,
+    "cornerRadiusPx": 8,
+    "gapRatioOfSide": 0.14,
+    "hasOwnBorder": false,
+    "hasOwnShadow": false,
+    "labelColor": "textPrimary",
+    "subLabelColor": "textSecondary"
+  },
+
+  "press": {
+    "scale": 0.96,
+    "darkenPercent": 12,
+    "durationMs": 60,
+    "longPressRingMs": 500,
+    "doublePressWindowMs": 300
+  },
+
+  "state": {
+    "onColor": "stateOn"
+  },
+
+  "pagination": {
+    "dotActiveColor": "pageDotActive",
+    "dotInactiveColor": "pageDotInactive",
+    "overflow": "forbidden"
+  },
+
+  "stand": {
+    "tiltDeg": 8,
+    "appliesTo": ["editor"]
+  },
+
+  "gridPresets": {
+    "mini": { "rows": 2, "cols": 3 },
+    "neo": { "rows": 2, "cols": 4 },
+    "mk2": { "rows": 3, "cols": 5 },
+    "xl": { "rows": 4, "cols": 8 },
+    "auto": { "basedOn": "screenSize" }
+  }
+}

@@ -34,8 +34,13 @@ privado y el updater necesita un feed público.
 
 ## Estado
 
-**Sin empezar.** El host de v1 (~2.600 líneas) se porta y se modulariza, no se reescribe. El plan
-de implementación está en `KiBoard-protocol`.
+**Maqueta del editor de la fase FP construida.** El dispositivo dibujado (marco, teclas, presets de
+modelo), el catálogo con búsqueda, el inspector de teclas y las ocho operaciones de arrastrar y
+soltar del plan —incluyendo deshacer/rehacer y el camino accesible de doble clic/flechas— corren
+contra un `MockBridge` en memoria y fixtures copiados de `KiBoard-protocol` (ver
+`src/mock/README.md`). Verificado interactivamente en una sesión de `vite dev` corriendo. El host
+de v1 en sí (~2.600 líneas) todavía se porta y se modulariza, no se reescribe — eso empieza en
+**F0**. El plan de implementación está en `KiBoard-protocol`.
 
 ## Stack
 

@@ -33,8 +33,12 @@ the updater needs a public feed.
 
 ## Status
 
-**Not started.** The v1 host (~2,600 lines) gets ported and modularized rather than rewritten.
-See the implementation plan in `KiBoard-protocol`.
+**Phase FP editor mock-up built.** The drawn device (bezel, keys, model presets), the searchable
+catalogue, the key inspector and all eight drag-and-drop operations from the plan — including
+undo/redo and the double-click/arrow-key accessible path — run against an in-memory `MockBridge`
+and fixtures copied from `KiBoard-protocol` (see `src/mock/README.md`). Verified interactively in a
+running `vite dev` session. The v1 host itself (~2,600 lines) still gets ported and modularized
+rather than rewritten — that starts at **F0**. See the implementation plan in `KiBoard-protocol`.
 
 ## Stack
 

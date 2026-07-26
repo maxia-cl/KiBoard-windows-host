@@ -1,0 +1,409 @@
+{
+  "$comment": "Filler app catalogue for the editor mock-up (docs/implementation-plan.md §3.3, InstalledApp). Shape matches the Rust struct: aumid, name, icon (base64 PNG placeholder here), optional exe. Not a wire protocol message: the real catalogue is host-local data delivered to the editor via a Tauri command, never sent to the phone.",
+  "apps": [
+    {
+      "aumid": "Adobe.Photoshop_ekt8g6hxevw36!App",
+      "name": "Adobe Photoshop",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true
+    },
+    {
+      "aumid": "Adobe.Illustrator_ekt8g6hxevw36!App",
+      "name": "Adobe Illustrator",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Adobe.PremierePro_ekt8g6hxevw36!App",
+      "name": "Adobe Premiere Pro",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Adobe.Lightroom_ekt8g6hxevw36!App",
+      "name": "Adobe Lightroom",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Adobe.Acrobat_ekt8g6hxevw36!App",
+      "name": "Adobe Acrobat",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.Office.EXCEL.EXE",
+      "name": "Microsoft Excel",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Microsoft Excel/Microsoft.Office.EXCEL.EXE"
+    },
+    {
+      "aumid": "Microsoft.Office.WINWORD.EXE",
+      "name": "Microsoft Word",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Microsoft Word/Microsoft.Office.WINWORD.EXE"
+    },
+    {
+      "aumid": "Microsoft.Office.POWERPNT.EXE",
+      "name": "Microsoft PowerPoint",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Microsoft PowerPoint/Microsoft.Office.POWERPNT.EXE"
+    },
+    {
+      "aumid": "Microsoft.Office.OUTLOOK.EXE",
+      "name": "Microsoft Outlook",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/Microsoft Outlook/Microsoft.Office.OUTLOOK.EXE"
+    },
+    {
+      "aumid": "MSTeams_8wekyb3d8bbwe!MSTeams",
+      "name": "Microsoft Teams",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true
+    },
+    {
+      "aumid": "chrome.exe",
+      "name": "Google Chrome",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/Google Chrome/chrome.exe"
+    },
+    {
+      "aumid": "firefox.exe",
+      "name": "Mozilla Firefox",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Mozilla Firefox/firefox.exe"
+    },
+    {
+      "aumid": "MSEdge",
+      "name": "Microsoft Edge",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Slack.exe",
+      "name": "Slack",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/Slack/Slack.exe"
+    },
+    {
+      "aumid": "Discord.exe",
+      "name": "Discord",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Discord/Discord.exe"
+    },
+    {
+      "aumid": "Zoom.exe",
+      "name": "Zoom",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Zoom/Zoom.exe"
+    },
+    {
+      "aumid": "Microsoft.SkypeApp_kzf8qxf38zg5c!App",
+      "name": "Skype",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+      "name": "WhatsApp",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Telegram.exe",
+      "name": "Telegram Desktop",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Telegram Desktop/Telegram.exe"
+    },
+    {
+      "aumid": "Spotify.exe",
+      "name": "Spotify",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/Spotify/Spotify.exe"
+    },
+    {
+      "aumid": "vlc.exe",
+      "name": "VLC media player",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/VLC media player/vlc.exe"
+    },
+    {
+      "aumid": "obs64.exe",
+      "name": "OBS Studio",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/OBS Studio/obs64.exe"
+    },
+    {
+      "aumid": "Streamlabs OBS.exe",
+      "name": "Streamlabs Desktop",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Streamlabs Desktop/Streamlabs OBS.exe"
+    },
+    {
+      "aumid": "Twitch Studio.exe",
+      "name": "Twitch Studio",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Twitch Studio/Twitch Studio.exe"
+    },
+    {
+      "aumid": "Steam.exe",
+      "name": "Steam",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Steam/Steam.exe"
+    },
+    {
+      "aumid": "EpicGamesLauncher.exe",
+      "name": "Epic Games Launcher",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Epic Games Launcher/EpicGamesLauncher.exe"
+    },
+    {
+      "aumid": "Microsoft.GamingApp_8wekyb3d8bbwe!App",
+      "name": "Xbox",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+      "name": "Calculator",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App",
+      "name": "Notepad",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.Paint_8wekyb3d8bbwe!App",
+      "name": "Paint",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.ScreenSketch_8wekyb3d8bbwe!App",
+      "name": "Snipping Tool",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "explorer.exe",
+      "name": "File Explorer",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/File Explorer/explorer.exe"
+    },
+    {
+      "aumid": "Taskmgr.exe",
+      "name": "Task Manager",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Task Manager/Taskmgr.exe"
+    },
+    {
+      "aumid": "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel",
+      "name": "Settings",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false
+    },
+    {
+      "aumid": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
+      "name": "Terminal",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true
+    },
+    {
+      "aumid": "powershell.exe",
+      "name": "PowerShell",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/PowerShell/powershell.exe"
+    },
+    {
+      "aumid": "Code.exe",
+      "name": "Visual Studio Code",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": true,
+      "exe": "C:/Program Files/Visual Studio Code/Code.exe"
+    },
+    {
+      "aumid": "devenv.exe",
+      "name": "Visual Studio",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Visual Studio/devenv.exe"
+    },
+    {
+      "aumid": "idea64.exe",
+      "name": "IntelliJ IDEA",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/IntelliJ IDEA/idea64.exe"
+    },
+    {
+      "aumid": "pycharm64.exe",
+      "name": "PyCharm",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/PyCharm/pycharm64.exe"
+    },
+    {
+      "aumid": "studio64.exe",
+      "name": "Android Studio",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Android Studio/studio64.exe"
+    },
+    {
+      "aumid": "sublime_text.exe",
+      "name": "Sublime Text",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Sublime Text/sublime_text.exe"
+    },
+    {
+      "aumid": "Notion.exe",
+      "name": "Notion",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Notion/Notion.exe"
+    },
+    {
+      "aumid": "Figma.exe",
+      "name": "Figma",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Figma/Figma.exe"
+    },
+    {
+      "aumid": "Postman.exe",
+      "name": "Postman",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Postman/Postman.exe"
+    },
+    {
+      "aumid": "Docker Desktop.exe",
+      "name": "Docker Desktop",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Docker Desktop/Docker Desktop.exe"
+    },
+    {
+      "aumid": "GitHubDesktop.exe",
+      "name": "GitHub Desktop",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/GitHub Desktop/GitHubDesktop.exe"
+    },
+    {
+      "aumid": "blender.exe",
+      "name": "Blender",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Blender/blender.exe"
+    },
+    {
+      "aumid": "Unity Hub.exe",
+      "name": "Unity Hub",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Unity Hub/Unity Hub.exe"
+    },
+    {
+      "aumid": "audacity.exe",
+      "name": "Audacity",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Audacity/audacity.exe"
+    },
+    {
+      "aumid": "HandBrake.exe",
+      "name": "HandBrake",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/HandBrake/HandBrake.exe"
+    },
+    {
+      "aumid": "7zFM.exe",
+      "name": "7-Zip File Manager",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/7-Zip File Manager/7zFM.exe"
+    },
+    {
+      "aumid": "WinRAR.exe",
+      "name": "WinRAR",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/WinRAR/WinRAR.exe"
+    },
+    {
+      "aumid": "CCleaner64.exe",
+      "name": "CCleaner",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/CCleaner/CCleaner64.exe"
+    },
+    {
+      "aumid": "MBAMService.exe",
+      "name": "Malwarebytes",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Malwarebytes/MBAMService.exe"
+    },
+    {
+      "aumid": "NVIDIA GeForce Experience.exe",
+      "name": "NVIDIA GeForce Experience",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/NVIDIA GeForce Experience/NVIDIA GeForce Experience.exe"
+    },
+    {
+      "aumid": "lghub.exe",
+      "name": "Logitech G HUB",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Logitech G HUB/lghub.exe"
+    },
+    {
+      "aumid": "Razer Synapse Service.exe",
+      "name": "Razer Synapse",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Razer Synapse/Razer Synapse Service.exe"
+    },
+    {
+      "aumid": "iCUE.exe",
+      "name": "Corsair iCUE",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Corsair iCUE/iCUE.exe"
+    },
+    {
+      "aumid": "StreamDeck.exe",
+      "name": "Elgato Stream Deck",
+      "icon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "running": false,
+      "exe": "C:/Program Files/Elgato Stream Deck/StreamDeck.exe"
+    }
+  ]
+}
