@@ -86,11 +86,13 @@
 <style>
   .inspector {
     width: 240px;
+    flex-shrink: 0;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     color: var(--deck-color-text-primary);
+    overflow-y: auto;
   }
   .preview-key {
     width: 64px;

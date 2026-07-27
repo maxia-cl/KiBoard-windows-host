@@ -60,6 +60,7 @@
 <style>
   .catalogue {
     width: 220px;
+    flex-shrink: 0;
     padding: 12px;
     overflow-y: auto;
     color: var(--deck-color-text-primary);

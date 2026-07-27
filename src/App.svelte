@@ -60,7 +60,8 @@
   .app {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
   }
   .watermark {
     background: var(--deck-color-accent, #b22420);
@@ -113,5 +114,6 @@
   .columns {
     display: flex;
     flex: 1;
+    min-height: 0;
   }
 </style>
