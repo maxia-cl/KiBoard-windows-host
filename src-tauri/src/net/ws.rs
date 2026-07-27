@@ -374,6 +374,23 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 auto_for(s).unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":true}).to_string())
             }
         }
+        // §4.4 — the client's grid changes when the phone is rotated, so it cannot be a one-shot
+        // declaration in `hello`.
+        Some("set_grid") => {
+            if !s.authed {
+                return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
+            }
+            s.grid = Grid::new(
+                val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
+                val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
+            );
+            // The page index is an index into the OLD pagination; a wider grid means fewer pages,
+            // so keeping it could land the client past the end.
+            s.page = 0;
+            let rendered = if s.manual { manual_layout(s) } else { auto_for(s) };
+            rendered
+                .unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":true}).to_string())
+        }
         Some("set_page") => {
             if !s.authed {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
