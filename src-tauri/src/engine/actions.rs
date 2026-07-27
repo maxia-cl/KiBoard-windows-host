@@ -113,6 +113,32 @@ pub fn run_step(step: &str) -> Result<(), &'static str> {
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
         return e.text(text).map_err(|_| "internal");
     }
+    // "open:<url|path>" -> hands it to the default handler (browser, explorer). Only http(s) and
+    // absolute paths: without this an "open:" key could invoke a `file://`-adjacent scheme handler
+    // (ms-settings:, shell:...) and reach far past "open a link".
+    if let Some(target) = step.strip_prefix("open:") {
+        let target = target.trim();
+        let allowed = target.starts_with("http://")
+            || target.starts_with("https://")
+            || std::path::Path::new(target).is_absolute();
+        if !allowed {
+            return Err("blocked_action");
+        }
+        return platform::open_target(target);
+    }
+    // The app-catalogue actions are defined by the protocol but need the AppsFolder enumeration
+    // and the AUMID/path resolution that F4 builds. Answering explicitly beats falling through to
+    // the hotkey parser, which would report "bad_key" for something that is not a hotkey at all.
+    for verb in ["launch:", "focus:", "kill:"] {
+        if step.starts_with(verb) {
+            return Err("unknown_action"); // ponytail: F4 implements these; see platform/windows/apps.rs
+        }
+    }
+    // "run:<cmd>" is opt-in from Settings and that switch does not exist yet. Until it does, an
+    // arbitrary shell command from the network is exactly what must NOT be reachable.
+    if step.starts_with("run:") {
+        return Err("blocked_action");
+    }
     run_hotkey(step)
 }
 

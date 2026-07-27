@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use crate::config::config;
+use crate::config::{config, Key, KeyKind, Page};
+use crate::engine::deck::{self, Grid};
 use crate::engine::state::obs_state;
 use crate::i18n;
 use crate::platform;
@@ -16,7 +17,7 @@ type RawButton = (usize, String, String, String, bool, bool);
 /// name AND the window title (this enables per-tab sub-profiles, e.g. Google Sheets).
 /// `shell` = shell detected in the window's process tree (see `platform::detect_shell_kind`);
 /// it outranks the title, which lies when you run another shell inside a tab.
-pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -> String {
+pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -> AutoLayout {
     // Pick a profile and COPY its buttons (id, label, action, icon, danger, recommended); release
     // the lock before querying UIA (slow) so it doesn't block everyone else.
     // OBS state: if it's recording or live, the "obs" profile is PINNED even if the foreground
@@ -60,7 +61,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     // Hide uia buttons whose control is disabled right now (dynamic app state: e.g. "Crop" only
     // enables once a selection is made).
     let disabled = platform::uia_disabled_actions(&raw);
-    let mut buttons: Vec<_> = raw
+    let mut buttons: Vec<(bool, Key)> = raw
         .iter()
         .filter(|(_, _, action, _, _, _)| !disabled.contains(action))
         // No mic in OBS (neither global nor in the scenes): the Mic button would do nothing -> hide it.
@@ -104,29 +105,89 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
                 }
                 None => action.clone(),
             };
-            let mut j = json!({ "id": i, "label": label, "action": action_out, "icon": icon, "danger": danger, "recommended": rec });
-            if let Some(on) = on {
-                j["on"] = json!(on);
-            }
-            j
+            (
+                *rec,
+                Key {
+                    pos: *i,
+                    label: label.to_string(),
+                    icon: icon.clone(),
+                    action: Some(action_out),
+                    danger: *danger,
+                    state: on.map(|on| json!({ "on": on })),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                },
+            )
         })
         .collect();
     // Auto-generated scene buttons from OBS: the user sees THEIR scenes with no setup.
     if profile_id == "obs" && obs.connected {
         for (i, s) in obs.scenes.iter().enumerate() {
-            buttons.push(json!({
-                "id": 1000 + i, "label": s, "action": format!("obs:scene:{s}"), "icon": "scene",
-                "danger": false, "recommended": true, "on": *s == obs.current_scene
-            }));
+            buttons.push((
+                true,
+                Key {
+                    pos: 1000 + i,
+                    label: s.clone(),
+                    icon: "scene".into(),
+                    action: Some(format!("obs:scene:{s}")),
+                    state: Some(json!({ "on": *s == obs.current_scene })),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                },
+            ));
         }
     }
+    // Recommended keys first, so page 0 is the profile's default selection and the "extras" spill
+    // onto later pages instead of pushing useful keys off the first screen. Stable: within each
+    // group the catalogue's authored order is kept.
+    buttons.sort_by_key(|(rec, _)| !rec);
+    let keys = buttons
+        .into_iter()
+        .enumerate()
+        .map(|(pos, (_, k))| Key { pos, ..k })
+        .collect();
+
     // System volume for the phone's dock (slider). null if there's no audio device.
     let sys = platform::system_volume()
         .map(|(vol, muted)| json!({ "vol": vol, "muted": muted }))
         .unwrap_or(serde_json::Value::Null);
+    AutoLayout { profile_id, app_name: app.to_string(), app_icon: icon_b64.to_string(), keys, sys }
+}
+
+/// The resolved auto-mode layout, before pagination.
+///
+/// Deliberately grid-independent: it is resolved ONCE by the 500 ms poll and broadcast to every
+/// connected phone, and those phones can have different grids. Each connection turns this into its
+/// own `layout` message via [`auto_layout_json`].
+#[derive(Clone, Default)]
+pub struct AutoLayout {
+    pub profile_id: String,
+    pub app_name: String,
+    pub app_icon: String,
+    pub keys: Vec<Key>,
+    pub sys: serde_json::Value,
+}
+
+impl AutoLayout {
+    /// Same page/key addressing as a deck, so `key` presses resolve identically in both modes.
+    pub(crate) fn as_page(&self) -> Page {
+        Page { id: self.profile_id.clone(), name: String::new(), keys: self.keys.clone() }
+    }
+}
+
+/// An auto-mode `layout` message for one page of the client's grid (protocol §4.1).
+pub fn auto_layout_json(a: &AutoLayout, grid: Grid, page: usize) -> String {
+    let pg = a.as_page();
+    let pages = deck::pages(&pg, grid);
+    let page = page.min(pages - 1);
     json!({
-        "v": 2, "type": "layout", "profileId": profile_id,
-        "appName": app, "appIcon": icon_b64, "buttons": buttons, "sys": sys
+        "v": 2, "type": "layout", "mode": "auto",
+        "source": { "kind": "profile", "id": a.profile_id,
+                    "appName": a.app_name, "appIcon": a.app_icon },
+        "grid": { "rows": grid.rows, "cols": grid.cols },
+        "page": page, "pages": pages,
+        "keys": deck::keys_for(&pg, grid, page),
+        "sys": a.sys,
     })
     .to_string()
 }
@@ -135,6 +196,8 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
 pub async fn watch_active_app() {
     let mut last_app = String::new();
     let mut icon = String::new();
+    // Change detection stays on the JSON: comparing the rendered form is what catches a live-state
+    // change (OBS started recording) that leaves the profile identical.
     let mut last_layout = String::new();
     loop {
         let (app, title, path, pid) = match active_win_pos_rs::get_active_window() {
@@ -150,6 +213,9 @@ pub async fn watch_active_app() {
             last_app = app.clone();
             icon = platform::extract_icon_b64(&path); // only on app change
         }
+        // Feeds the window switcher's MRU (§4.3) off the poll that is already running: no second
+        // timer, and the ordering is right the first time the user opens the switcher.
+        crate::engine::windows::touch(platform::foreground_window());
         let layout = {
             let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
             // detect_shell_kind walks the process tree -> onto the blocking thread, like the rest.
@@ -157,8 +223,11 @@ pub async fn watch_active_app() {
                 .await
                 .unwrap_or_default()
         };
-        if !layout.is_empty() && layout != last_layout {
-            last_layout = layout.clone();
+        // Rendered on the reference grid purely to detect change; every connection re-renders it
+        // for its own grid on the way out.
+        let fingerprint = auto_layout_json(&layout, Grid::default(), 0);
+        if fingerprint != last_layout {
+            last_layout = fingerprint;
             crate::net::ws::publish_layout(layout);
         }
         tokio::time::sleep(Duration::from_millis(500)).await;

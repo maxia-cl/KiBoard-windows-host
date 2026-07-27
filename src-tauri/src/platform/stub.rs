@@ -32,11 +32,19 @@ pub fn icon_cached(_path: &str) -> String {
     String::new()
 }
 
-pub fn list_windows_json() -> String {
-    serde_json::json!({ "v": 2, "type": "windows", "items": [] }).to_string()
+pub fn list_windows() -> Vec<crate::engine::windows::Win> {
+    Vec::new()
+}
+
+pub fn foreground_window() -> isize {
+    0
 }
 
 pub fn focus_window(_id: isize) {}
+
+pub fn open_target(_target: &str) -> Result<(), &'static str> {
+    Err("unsupported_platform")
+}
 
 pub fn process_running(_names: &[&str]) -> bool {
     false

@@ -1016,7 +1016,13 @@ fn default_true() -> bool {
 
 impl Config {
     fn path() -> std::path::PathBuf {
-        let dir = dirs::config_dir().unwrap_or(std::env::temp_dir()).join("KiBoard");
+        // KIBOARD_CONFIG_DIR points a dev build at a throwaway config. Without it, testing means
+        // running against the real one — which holds live pairing tokens and gets rewritten by the
+        // v1->v2 migration on first load.
+        let dir = match std::env::var_os("KIBOARD_CONFIG_DIR") {
+            Some(d) => std::path::PathBuf::from(d),
+            None => dirs::config_dir().unwrap_or(std::env::temp_dir()).join("KiBoard"),
+        };
         let _ = std::fs::create_dir_all(&dir);
         dir.join("config.json")
     }

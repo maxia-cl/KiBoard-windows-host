@@ -311,23 +311,38 @@ pub fn icon_cached(path: &str) -> String {
     b
 }
 
-/// Lists open app windows (`windows` JSON), with each exe's real icon.
-pub fn list_windows_json() -> String {
-    use serde_json::json;
+/// Open app windows in the platform's Z-order. Ordering for the switcher (MRU, current first) is
+/// `engine::windows::order`'s job — this layer only reports what exists.
+pub fn list_windows() -> Vec<crate::engine::windows::Win> {
     use windows::Win32::Foundation::{HWND, LPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsIconic};
     let mut list: Vec<(isize, String)> = Vec::new();
     unsafe {
         let _ = EnumWindows(Some(enum_windows_cb), LPARAM(&mut list as *mut _ as isize));
     }
-    let items: Vec<_> = list
-        .into_iter()
+    list.into_iter()
         .map(|(id, title)| {
-            let path = window_process_path(HWND(id as *mut core::ffi::c_void));
-            json!({ "id": id, "title": title, "icon": icon_cached(&path) })
+            let hwnd = HWND(id as *mut core::ffi::c_void);
+            crate::engine::windows::Win {
+                id,
+                title,
+                exe: window_process_path(hwnd),
+                minimized: unsafe { IsIconic(hwnd).as_bool() },
+            }
         })
-        .collect();
-    json!({ "v": 2, "type": "windows", "items": items }).to_string()
+        .collect()
+}
+
+/// HWND of the window in the foreground right now, or 0. Feeds the MRU and the `current` flag.
+pub fn foreground_window() -> isize {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    unsafe { GetForegroundWindow().0 as isize }
+}
+
+/// Opens a URL or path in whatever the user has registered as its default handler. The caller
+/// (`run_step`) is what restricts this to http(s) and absolute paths.
+pub fn open_target(target: &str) -> Result<(), &'static str> {
+    tauri_plugin_opener::open_url(target, None::<&str>).map_err(|_| "internal")
 }
 
 /// Brings a window to the foreground (restores it if minimized).

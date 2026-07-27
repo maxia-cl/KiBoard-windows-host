@@ -14,17 +14,25 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::config::{config, KeyKind, Profile};
 use crate::engine::actions::run_action;
 use crate::engine::deck::{self, Grid};
+use crate::engine::layout::{auto_layout_json, AutoLayout};
 use crate::platform;
 
 pub const WS_PORT: u16 = 8770;
 
-static TX: OnceLock<broadcast::Sender<String>> = OnceLock::new();
-fn tx() -> &'static broadcast::Sender<String> {
+static TX: OnceLock<broadcast::Sender<AutoLayout>> = OnceLock::new();
+fn tx() -> &'static broadcast::Sender<AutoLayout> {
     TX.get_or_init(|| broadcast::channel(16).0)
 }
-static CURRENT_LAYOUT: OnceLock<Mutex<String>> = OnceLock::new();
-fn current_layout() -> &'static Mutex<String> {
-    CURRENT_LAYOUT.get_or_init(|| Mutex::new(String::new()))
+static CURRENT_LAYOUT: OnceLock<Mutex<Option<AutoLayout>>> = OnceLock::new();
+fn current_layout() -> &'static Mutex<Option<AutoLayout>> {
+    CURRENT_LAYOUT.get_or_init(|| Mutex::new(None))
+}
+
+/// The auto-mode layout rendered for THIS session's grid and page, or `None` before the poll has
+/// resolved one.
+fn auto_for(s: &Session) -> Option<String> {
+    let cur = current_layout().lock().unwrap();
+    cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page))
 }
 
 /// Authenticated mobile clients right now (for the host UI's badge).
@@ -32,8 +40,8 @@ pub static CLIENTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUs
 
 /// Pushes a freshly resolved layout to every connected (authenticated) client, and remembers it
 /// so a client that connects afterwards gets it immediately (see `handle_conn`).
-pub fn publish_layout(layout: String) {
-    *current_layout().lock().unwrap() = layout.clone();
+pub fn publish_layout(layout: AutoLayout) {
+    *current_layout().lock().unwrap() = Some(layout.clone());
     let _ = tx().send(layout);
 }
 
@@ -97,16 +105,20 @@ async fn handle_conn(stream: TcpStream) {
                 if write.send(Message::text(reply)).await.is_err() { break; }
                 if !was_authed && session.authed {
                     CLIENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let cur = current_layout().lock().unwrap().clone();
-                    if !cur.is_empty() && write.send(Message::text(cur)).await.is_err() { break; }
+                    // Rendered for the grid this client just declared in `hello`.
+                    if let Some(cur) = auto_for(&session) {
+                        if write.send(Message::text(cur)).await.is_err() { break; }
+                    }
                 }
             }
             pushed = rx.recv() => {
                 if let Ok(layout) = pushed {
                     // A client in manual mode is looking at its own deck; auto mode's broadcast
                     // would yank the layout out from under it on the next foreground-app change.
-                    if session.authed && !session.manual
-                        && write.send(Message::text(layout)).await.is_err() { break; }
+                    if session.authed && !session.manual {
+                        let msg = auto_layout_json(&layout, session.grid, session.page);
+                        if write.send(Message::text(msg)).await.is_err() { break; }
+                    }
                 }
             }
         }
@@ -154,6 +166,15 @@ enum Press {
 }
 
 fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Press, &'static str> {
+    // Auto mode resolves against the profile the poll last published; manual mode against the
+    // deck. Same addressing either way, which is why a press looks identical on the wire.
+    if !s.manual {
+        let cur = current_layout().lock().unwrap();
+        let auto = cur.as_ref().ok_or("no_such_key")?;
+        let pg = auto.as_page();
+        let key = deck::resolve(&pg, s.grid, page, pos).ok_or("no_such_key")?;
+        return key.action_for(kind).map(|a| Press::Run(a.to_string())).ok_or("no_such_key");
+    }
     let cfg = config().lock().unwrap();
     let deck = cfg
         .decks
@@ -198,6 +219,39 @@ fn input_action(val: &serde_json::Value) -> Result<String, &'static str> {
         },
         _ => Err("unknown_action"),
     }
+}
+
+/// Actions that move THIS session rather than driving the desktop (`deck:`, `mode:`, `windows`).
+fn is_session_action(action: &str) -> bool {
+    action == "windows" || action.starts_with("deck:") || action.starts_with("mode:")
+}
+
+fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
+    let fail = |e: &str| json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string();
+    if let Some(deck_id) = action.strip_prefix("deck:") {
+        if !config().lock().unwrap().decks.iter().any(|d| d.id == deck_id) {
+            return fail("no_such_key");
+        }
+        s.deck_id = deck_id.to_string();
+        s.page_id = String::new(); // entry page
+        s.page = 0;
+        s.manual = true;
+        return manual_layout(s).unwrap_or_else(|| fail("no_such_key"));
+    }
+    if let Some(mode) = action.strip_prefix("mode:") {
+        s.manual = mode == "manual";
+        s.page = 0;
+        return if s.manual {
+            manual_layout(s).unwrap_or_else(|| fail("no_such_key"))
+        } else {
+            // Auto mode is owned by the 500 ms poll; hand back whatever it resolved last.
+            auto_for(s).unwrap_or_else(|| json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string())
+        };
+    }
+    if action == "windows" {
+        return crate::engine::windows::windows_json(s.grid, 0);
+    }
+    fail("unknown_action")
 }
 
 fn handle_message(txt: &str, s: &mut Session) -> String {
@@ -282,6 +336,9 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                         layout
                     }
                 }
+                // Session-scoped actions never touch the desktop: they change what THIS client is
+                // looking at, so they cannot live in `run_action`, which has no session.
+                Ok(Press::Run(action)) if is_session_action(&action) => run_session_action(&action, s, &id),
                 Ok(Press::Run(action)) => match run_action(&action) {
                     Ok(()) => json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string(),
                     Err(e) => json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string(),
@@ -314,8 +371,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     .unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":false,"error":"no_such_key"}).to_string())
             } else {
                 // Auto mode: the 500 ms poll owns the layout — hand back the current one.
-                let cur = current_layout().lock().unwrap().clone();
-                if cur.is_empty() { json!({"v":2,"type":"command_result","ok":true}).to_string() } else { cur }
+                auto_for(s).unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":true}).to_string())
             }
         }
         Some("set_page") => {
@@ -323,14 +379,15 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
             s.page = val["page"].as_u64().unwrap_or(0) as usize;
-            manual_layout(s)
+            let rendered = if s.manual { manual_layout(s) } else { auto_for(s) };
+            rendered
                 .unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":false,"error":"no_such_key"}).to_string())
         }
         Some("list_windows") => {
             if !s.authed {
-                return json!({"v":2,"type":"windows","items":[]}).to_string();
+                return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
-            platform::list_windows_json()
+            crate::engine::windows::windows_json(s.grid, val["page"].as_u64().unwrap_or(0) as usize)
         }
         // Profile scanned from a "kbprofile:" QR on another KiBoard: added to the local catalogue.
         Some("import_profile") => {
