@@ -1,0 +1,3 @@
+[submodule "KiBoard-protocol"]
+	path = KiBoard-protocol
+	url = ../KiBoard-protocol.git
