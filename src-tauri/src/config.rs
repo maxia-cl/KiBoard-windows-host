@@ -806,11 +806,33 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
 /// hosts refresh them (keeping the token and pairing).
 const PROFILES_VERSION: u32 = 36;
 
+/// A phone paired via the v2 six-digit-code flow (protocol/README.md §2). Each device gets its
+/// own token, individually revocable — the pre-F1 model had one shared `token` for everyone.
+#[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct Device {
+    pub(crate) device_id: String,
+    pub(crate) name: String,
+    pub(crate) platform: String,
+    pub(crate) token: String,
+    pub(crate) last_seen: u64,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 pub(crate) struct Config {
+    /// Pre-F1 shared token. Dead once every client speaks v2, kept only so F2's config.json
+    /// migration (docs/implementation-plan.md, R7) has something to read; never checked anymore.
     pub(crate) token: String,
     #[serde(default)]
     pub(crate) paired: Vec<String>,
+    /// Stable per-install id (8 hex chars), advertised in the mDNS TXT record.
+    #[serde(default)]
+    pub(crate) host_id: String,
+    /// v2 paired devices, one token each, individually revocable.
+    #[serde(default)]
+    pub(crate) devices: Vec<Device>,
+    /// Whether the host currently accepts new pair_request attempts (mDNS TXT `pair`).
+    #[serde(default = "default_true")]
+    pub(crate) pairing_open: bool,
     #[serde(default)]
     pub(crate) profiles: Vec<Profile>,
     #[serde(default)]
@@ -838,9 +860,12 @@ impl Config {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             // Fresh install (no file): analytics ON by default; derive(Default) would give false.
-            .unwrap_or(Config { analytics: true, ..Default::default() });
+            .unwrap_or(Config { analytics: true, pairing_open: true, ..Default::default() });
         if c.token.is_empty() {
             c.token = new_token();
+        }
+        if c.host_id.is_empty() {
+            c.host_id = new_host_id();
         }
         // Refreshes the built-in profiles on fresh installs or when the version bumps.
         if c.profiles.is_empty() || c.profiles_version < PROFILES_VERSION {
@@ -859,6 +884,12 @@ impl Config {
 static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
 pub(crate) fn config() -> &'static Mutex<Config> {
     CONFIG.get_or_init(|| Mutex::new(Config::load()))
+}
+/// 8 hex chars (4 random bytes) — short, stable per-install id for mDNS/pairing display.
+pub(crate) fn new_host_id() -> String {
+    use rand::Rng;
+    let bytes: [u8; 4] = rand::thread_rng().gen();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 pub(crate) fn new_token() -> String {
     use rand::Rng;

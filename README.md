@@ -33,12 +33,19 @@ the updater needs a public feed.
 
 ## Status
 
-**F0 done.** The v1 host (`src-tauri/`) was ported from `ricardomendezv/Kiboard` via a
-`git subtree split` (full history preserved) and modularized into `config.rs`, `net/`, `engine/`,
+**F1 done** (F0 before it). The v1 host (`src-tauri/`) was ported from `ricardomendezv/Kiboard` via
+a `git subtree split` (full history preserved) and modularized into `config.rs`, `net/`, `engine/`,
 `platform/`, `integrations/obs.rs` with no behavior change — verified against a real WebSocket
 handshake using the v1 protocol. `KiBoard-protocol` is pinned as a git submodule at
 `KiBoard-protocol/` (tag `v0.1.0-fp`); `npm run dev`/`build` regenerate `src/tokens.g.css` from it
 automatically.
+
+F1 added real mDNS advertisement (`net/discovery.rs`, the `mdns-sd` crate) and v2 pairing by
+six-digit code with per-device, individually revocable tokens (`net/pairing.rs`) — the host now
+rejects a v1-shaped `hello` with `protocol_too_old`. A "Pairing & devices" panel (the ⚙ button)
+shows the host id, the pending code, and lets you revoke one device without affecting the others.
+Verified with a live pairing round trip against the compiled host and, separately, against the
+shipping Dart client in `KiBoard-app`.
 
 The **phase FP editor mock-up** — the drawn device, the searchable catalogue, the key inspector
 and all eight drag-and-drop operations, including undo/redo and the double-click/arrow-key

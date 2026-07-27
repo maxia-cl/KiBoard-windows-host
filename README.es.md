@@ -34,12 +34,19 @@ privado y el updater necesita un feed público.
 
 ## Estado
 
-**F0 lista.** El host de v1 (`src-tauri/`) se portó desde `ricardomendezv/Kiboard` con un
-`git subtree split` (historial completo preservado) y se modularizó en `config.rs`, `net/`,
+**F1 lista** (y antes, F0). El host de v1 (`src-tauri/`) se portó desde `ricardomendezv/Kiboard` con
+un `git subtree split` (historial completo preservado) y se modularizó en `config.rs`, `net/`,
 `engine/`, `platform/`, `integrations/obs.rs` sin cambiar el comportamiento — verificado contra un
 handshake WebSocket real usando el protocolo v1. `KiBoard-protocol` está fijado como submódulo de
 git en `KiBoard-protocol/` (tag `v0.1.0-fp`); `npm run dev`/`build` regeneran `src/tokens.g.css`
 desde ahí automáticamente.
+
+F1 sumó anuncio mDNS real (`net/discovery.rs`, el crate `mdns-sd`) y emparejamiento v2 por código
+de 6 dígitos con tokens por dispositivo, revocables uno por uno (`net/pairing.rs`) — el host ahora
+rechaza un `hello` con forma de v1 con `protocol_too_old`. Un panel de "Pairing & devices" (el
+botón ⚙) muestra el id del host, el código pendiente, y permite revocar un dispositivo sin afectar
+a los demás. Verificado con un round-trip de emparejamiento real contra el host compilado y, por
+separado, contra el cliente Dart real de `KiBoard-app`.
 
 La **maqueta del editor de la fase FP** —el dispositivo dibujado, el catálogo con búsqueda, el
 inspector de teclas y las ocho operaciones de arrastrar y soltar, incluyendo deshacer/rehacer y el

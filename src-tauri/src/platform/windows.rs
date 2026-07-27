@@ -327,7 +327,7 @@ pub fn list_windows_json() -> String {
             json!({ "id": id, "title": title, "icon": icon_cached(&path) })
         })
         .collect();
-    json!({ "v": 1, "type": "windows", "items": items }).to_string()
+    json!({ "v": 2, "type": "windows", "items": items }).to_string()
 }
 
 /// Brings a window to the foreground (restores it if minimized).

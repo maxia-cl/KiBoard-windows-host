@@ -25,3 +25,6 @@ config.v1.bak
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# Local dev launcher: machine-specific paths, do not commit
+dev.cmd

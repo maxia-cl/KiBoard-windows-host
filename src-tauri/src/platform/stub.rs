@@ -33,7 +33,7 @@ pub fn icon_cached(_path: &str) -> String {
 }
 
 pub fn list_windows_json() -> String {
-    serde_json::json!({ "v": 1, "type": "windows", "items": [] }).to_string()
+    serde_json::json!({ "v": 2, "type": "windows", "items": [] }).to_string()
 }
 
 pub fn focus_window(_id: isize) {}

@@ -16,7 +16,7 @@ mod integrations;
 mod net;
 mod platform;
 
-use config::{config, new_token, Profile};
+use config::{config, new_token, Device, Profile};
 
 pub(crate) const HOST_NAME: &str = "KiBoard Host";
 
@@ -201,6 +201,51 @@ fn profile_qr(profile: Profile) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// v2 pairing + device management (F1, protocol/README.md §2)
+// ---------------------------------------------------------------------------
+
+/// The host's id/name and whether it's currently accepting new pair_request attempts, plus the
+/// pending code if a phone is mid-pairing right now — for the host UI to show
+/// "«device» wants to connect: 418203".
+#[tauri::command]
+fn pairing_status() -> serde_json::Value {
+    let cfg = config().lock().unwrap();
+    let pending = net::pairing::pending_status();
+    json!({
+        "hostId": cfg.host_id,
+        "pairingOpen": cfg.pairing_open,
+        "pending": pending.map(|(device, code, expires_in)| json!({
+            "device": device, "code": code, "expiresIn": expires_in
+        })),
+    })
+}
+
+#[tauri::command]
+fn list_devices() -> Vec<Device> {
+    config().lock().unwrap().devices.clone()
+}
+
+/// Revokes one device's token. Everyone else stays connected — F1's whole point over v1's single
+/// shared token.
+#[tauri::command]
+fn revoke_device(device_id: String) -> serde_json::Value {
+    let mut cfg = config().lock().unwrap();
+    cfg.devices.retain(|d| d.device_id != device_id);
+    cfg.save();
+    json!({ "ok": true })
+}
+
+/// Opens or closes the host to new pair_request attempts (mDNS TXT `pair`). Already-paired
+/// devices keep working either way.
+#[tauri::command]
+fn set_pairing_open(open: bool) {
+    let mut cfg = config().lock().unwrap();
+    cfg.pairing_open = open;
+    cfg.save();
+    net::discovery::advertise("auto");
+}
+
+// ---------------------------------------------------------------------------
 // Tauri bootstrap
 // ---------------------------------------------------------------------------
 
@@ -234,7 +279,11 @@ pub fn run() {
             host_status,
             set_analytics,
             open_donate,
-            test_action
+            test_action,
+            pairing_status,
+            list_devices,
+            revoke_device,
+            set_pairing_open
         ])
         // The X hides the window (the app lives in the tray); without this it gets destroyed and
         // the app quits.
@@ -249,12 +298,19 @@ pub fn run() {
             track_event("app_started");
             tauri::async_runtime::spawn(net::ws::run_ws_server());
             tauri::async_runtime::spawn(engine::layout::watch_active_app());
+            // Permanent mDNS advertisement (protocol/README.md §1). "auto" until F4 adds manual
+            // mode switching on the host side.
+            net::discovery::advertise("auto");
             let (obs_tx, obs_rx) = tokio::sync::mpsc::unbounded_channel();
             integrations::obs::set_sender(obs_tx);
             tauri::async_runtime::spawn(integrations::obs::obs_client_loop(obs_rx));
 
-            // Launch with Windows (idempotent).
-            let _ = app.autolaunch().enable();
+            // Launch with Windows (idempotent). Debug builds must NOT register themselves: the exe
+            // under target/debug loads `devUrl`, so at boot it opens a "connection refused" window
+            // because Vite is not running.
+            if !cfg!(debug_assertions) {
+                let _ = app.autolaunch().enable();
+            }
 
             // Checks for updates on GitHub at launch (silent if there's none/the connection fails).
             let handle = app.handle().clone();

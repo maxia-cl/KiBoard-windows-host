@@ -1,5 +1,7 @@
-//! WebSocket server: sessions, framing hardening, message routing. Protocol: see
-//! KiBoard-protocol/protocol/README.md (v1 today — F2 freezes v2).
+//! WebSocket server: sessions, framing hardening, message routing. Protocol v2: see
+//! KiBoard-protocol/protocol/README.md. Discovery and pairing (§1-2) are real as of F1; the
+//! layout/command messages below (§4) still carry v1's Profile/Button shape until F2 freezes the
+//! Deck/Page/Key model — only the `v` tag and the auth path changed.
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -51,9 +53,11 @@ pub async fn run_ws_server() {
 async fn handle_conn(stream: TcpStream) {
     // Frame/message size cap: a legitimate client sends a few KB of JSON (the largest profile,
     // when importing one). 64 KB cuts off an attacker trying to exhaust memory with giant frames.
-    let mut cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
-    cfg.max_message_size = Some(64 * 1024);
-    cfg.max_frame_size = Some(64 * 1024);
+    let cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+        max_message_size: Some(64 * 1024),
+        max_frame_size: Some(64 * 1024),
+        ..Default::default()
+    };
     let ws = match tokio_tungstenite::accept_async_with_config(stream, Some(cfg)).await {
         Ok(w) => w,
         Err(_) => return,
@@ -61,14 +65,14 @@ async fn handle_conn(stream: TcpStream) {
     let (mut write, mut read) = ws.split();
     let mut rx = tx().subscribe();
     let mut authed = false;
-    let mut failed_auth = 0u32; // token brute-force brake
+    let mut failed_auth = 0u32; // token/code brute-force brake
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
 
     loop {
         tokio::select! {
             _ = keepalive.tick() => {
                 // Text ping (the phone ignores type=ping); keeps the connection alive.
-                if authed && write.send(Message::text("{\"v\":1,\"type\":\"ping\"}")).await.is_err() {
+                if authed && write.send(Message::text("{\"v\":2,\"type\":\"ping\"}")).await.is_err() {
                     break;
                 }
             }
@@ -79,9 +83,9 @@ async fn handle_conn(stream: TcpStream) {
                 let txt = msg.into_text().map(|t| t.to_string()).unwrap_or_default();
                 let was_authed = authed;
                 let reply = handle_message(&txt, &mut authed);
-                // Token brake: every failed "hello" attempt costs 500ms and cuts off at 5,
+                // Brake: every failed hello/pair_confirm attempt costs 500ms and cuts off at 5,
                 // bounding the brute-force rate without affecting a legitimate client.
-                if !authed && txt.contains("\"hello\"") {
+                if !authed && (txt.contains("\"hello\"") || txt.contains("\"pair_confirm\"")) {
                     failed_auth += 1;
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     if failed_auth >= 5 {
@@ -111,61 +115,87 @@ async fn handle_conn(stream: TcpStream) {
 fn handle_message(txt: &str, authed: &mut bool) -> String {
     let val: serde_json::Value = match serde_json::from_str(txt) {
         Ok(v) => v,
-        Err(_) => return json!({"v":1,"type":"command_result","ok":false,"error":"bad_json"}).to_string(),
+        Err(_) => return json!({"v":2,"type":"command_result","ok":false,"error":"bad_json"}).to_string(),
     };
     match val["type"].as_str() {
+        // --- Pairing (protocol/README.md §2) — no auth needed yet, this IS the auth flow. ---
+        Some("pair_request") => {
+            let device = val["device"].as_str().unwrap_or("unknown");
+            let platform = val["platform"].as_str().unwrap_or("");
+            match crate::net::pairing::start(device, platform) {
+                Ok((_, expires_in)) => {
+                    json!({"v":2,"type":"pair_challenge","digits":6,"expiresIn":expires_in}).to_string()
+                }
+                Err(e) => json!({"v":2,"type":"pair_ack","ok":false,"error":e}).to_string(),
+            }
+        }
+        Some("pair_confirm") => {
+            let code = val["code"].as_str().unwrap_or("");
+            match crate::net::pairing::confirm(code) {
+                Ok(device) => json!({
+                    "v":2,"type":"pair_ack","ok":true,
+                    "token":device.token,"deviceId":device.device_id,"name":crate::HOST_NAME
+                })
+                .to_string(),
+                Err(e) => json!({"v":2,"type":"pair_ack","ok":false,"error":e}).to_string(),
+            }
+        }
         Some("hello") => {
+            if val["v"].as_i64() != Some(2) {
+                return json!({"v":2,"type":"hello_ack","ok":false,"error":"protocol_too_old"}).to_string();
+            }
+            let device_id = val["deviceId"].as_str().unwrap_or("");
             let token = val["token"].as_str().unwrap_or("");
-            let device = val["device"].as_str().unwrap_or("desconocido").to_string();
-            if crate::net::pairing::authenticate(token, &device) {
-                *authed = true;
-                // Client's language: catalogue labels are served translated. The 500ms poll
-                // re-broadcasts the layout on its own (the JSON changes when the locale changes).
-                crate::i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
-                json!({"v":1,"type":"hello_ack","ok":true,"name":crate::HOST_NAME}).to_string()
-            } else {
-                json!({"v":1,"type":"hello_ack","ok":false,"error":"invalid_token"}).to_string()
+            match crate::net::pairing::authenticate(device_id, token) {
+                Ok(()) => {
+                    *authed = true;
+                    // Client's language: catalogue labels are served translated. The 500ms poll
+                    // re-broadcasts the layout on its own (the JSON changes when the locale changes).
+                    crate::i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
+                    json!({"v":2,"type":"hello_ack","ok":true,"name":crate::HOST_NAME}).to_string()
+                }
+                Err(e) => json!({"v":2,"type":"hello_ack","ok":false,"error":e}).to_string(),
             }
         }
         Some("command") => {
             let id = val["id"].as_str().unwrap_or("").to_string();
             if !*authed {
-                return json!({"v":1,"type":"command_result","id":id,"ok":false,"error":"not_paired"}).to_string();
+                return json!({"v":2,"type":"command_result","id":id,"ok":false,"error":"not_paired"}).to_string();
             }
             let action = val["action"].as_str().unwrap_or("");
             match run_action(action) {
-                Ok(()) => json!({"v":1,"type":"command_result","id":id,"ok":true}).to_string(),
-                Err(e) => json!({"v":1,"type":"command_result","id":id,"ok":false,"error":e}).to_string(),
+                Ok(()) => json!({"v":2,"type":"command_result","id":id,"ok":true}).to_string(),
+                Err(e) => json!({"v":2,"type":"command_result","id":id,"ok":false,"error":e}).to_string(),
             }
         }
         Some("list_windows") => {
             if !*authed {
-                return json!({"v":1,"type":"windows","items":[]}).to_string();
+                return json!({"v":2,"type":"windows","items":[]}).to_string();
             }
             platform::list_windows_json()
         }
         // Profile scanned from a "kbprofile:" QR on another KiBoard: added to the local catalogue.
         Some("import_profile") => {
             if !*authed {
-                return json!({"v":1,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
+                return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
             let Ok(p) = serde_json::from_value::<Profile>(val["profile"].clone()) else {
-                return json!({"v":1,"type":"command_result","ok":false,"error":"bad_profile"}).to_string();
+                return json!({"v":2,"type":"command_result","ok":false,"error":"bad_profile"}).to_string();
             };
             let mut cfg = config().lock().unwrap();
             cfg.profiles.retain(|q| q.id != p.id); // re-importing the same id replaces it
             cfg.profiles.insert(0, p); // at the front: wins matching over the generic ones
             cfg.save();
-            json!({"v":1,"type":"command_result","ok":true,"imported":true}).to_string()
+            json!({"v":2,"type":"command_result","ok":true,"imported":true}).to_string()
         }
         Some("focus_window") => {
             if !*authed {
-                return json!({"v":1,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
+                return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
             let id = val["id"].as_i64().unwrap_or(0) as isize;
             platform::focus_window(id);
-            json!({"v":1,"type":"command_result","ok":true}).to_string()
+            json!({"v":2,"type":"command_result","ok":true}).to_string()
         }
-        _ => json!({"v":1,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
+        _ => json!({"v":2,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
     }
 }

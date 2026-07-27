@@ -8,6 +8,10 @@ use crate::engine::state::obs_state;
 use crate::i18n;
 use crate::platform;
 
+/// A button copied out of the config lock: (index, label, action, icon, danger, recommended).
+/// F2 replaces this with the real `Key` model; until then the tuple keeps the copy cheap.
+type RawButton = (usize, String, String, String, bool, bool);
+
 /// Builds the layout JSON for the given app, from the profiles. Matches against both the app
 /// name AND the window title (this enables per-tab sub-profiles, e.g. Google Sheets).
 /// `shell` = shell detected in the window's process tree (see `platform::detect_shell_kind`);
@@ -19,7 +23,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     // window is the game (title-based shortcuts can't see OBS behind a full-screen game).
     let obs = obs_state().lock().unwrap().clone();
     let obs_live = obs.connected && (obs.recording || obs.streaming);
-    let (profile_id, raw): (String, Vec<(usize, String, String, String, bool, bool)>) = {
+    let (profile_id, raw): (String, Vec<RawButton>) = {
         let cfg = config().lock().unwrap();
         let hay = format!("{app} {title}").to_lowercase();
         // Priority: OBS live > AI agent by title > REAL detected shell > title > generic.
@@ -121,7 +125,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
         .map(|(vol, muted)| json!({ "vol": vol, "muted": muted }))
         .unwrap_or(serde_json::Value::Null);
     json!({
-        "v": 1, "type": "layout", "profileId": profile_id,
+        "v": 2, "type": "layout", "profileId": profile_id,
         "appName": app, "appIcon": icon_b64, "buttons": buttons, "sys": sys
     })
     .to_string()
