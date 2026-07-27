@@ -2,7 +2,7 @@
 // plus two editor-only fields that never cross the wire: `folderId` (kind "folder") and
 // `targetPage` (kind "page"), which tell the mock host which local page to open on press.
 
-import tokens from "../mock/deck-tokens.json";
+import tokens from "../../KiBoard-protocol/protocol/deck-tokens.json";
 
 export const GRID_PRESETS = tokens.gridPresets;
 

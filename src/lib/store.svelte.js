@@ -2,9 +2,9 @@
 // F5 replaces this module's role with TauriBridge invoking real Rust commands; the component
 // tree above it (Device/Key/Catalogue/Inspector) does not change.
 
-import catalogueApps from "../mock/fixtures/catalogue-apps.json";
-import layoutLauncher from "../mock/fixtures/layout-manual-launcher.json";
-import layoutFolder from "../mock/fixtures/layout-folder.json";
+import catalogueApps from "../../KiBoard-protocol/protocol/fixtures/catalogue-apps.json";
+import layoutLauncher from "../../KiBoard-protocol/protocol/fixtures/layout-manual-launcher.json";
+import layoutFolder from "../../KiBoard-protocol/protocol/fixtures/layout-folder.json";
 import { denseKeys, emptyKey, capacityOf } from "./model.js";
 
 const PLACEHOLDER_ICON = catalogueApps.apps[0].icon;
