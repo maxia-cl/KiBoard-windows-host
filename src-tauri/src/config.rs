@@ -1,5 +1,5 @@
-//! Persisted config: the ~100-profile catalogue, per-device pairing list, OBS/analytics settings.
-//! `Deck`/`Page`/`Key` (the v2 manual-mode model) land in F2 — this is v1's `profiles[]` as-is.
+//! Persisted config: the ~100-profile catalogue, per-device pairing list, OBS/analytics settings,
+//! and the v2 `Deck`/`Page`/`Key` model for manual mode (protocol/README.md §3).
 use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,101 @@ pub(crate) struct Profile {
     #[serde(default)]
     pub(crate) matches: Vec<String>,
     pub(crate) buttons: Vec<Button>,
+}
+
+// ---------------------------------------------------------------------------
+// v2 manual-mode model: Deck > Page > Key (protocol/README.md §3)
+// ---------------------------------------------------------------------------
+
+/// What a key does when pressed. `folder` and `page` both navigate; the difference is only how the
+/// client animates it (a folder dives in and offers Back, a page is a sibling swipe).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum KeyKind {
+    Action,
+    Folder,
+    Page,
+    /// A hole in the grid. Carries no label and executes nothing.
+    #[default]
+    Empty,
+}
+
+/// One key on the grid. The stored shape and the wire shape are deliberately the same struct: a
+/// `layout` message is this serialized as-is, so the editor cannot drift from the protocol.
+///
+/// `pos = row * cols + col`, and it is an index into the DECK's own grid, not the client's — the
+/// host repaginates for whatever grid the client declared in `hello`.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub(crate) struct Key {
+    pub(crate) pos: usize,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) icon: String,
+    /// Real app icon or a custom image, as a `data:` URI. Set at runtime by F4's icon cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<String>,
+    /// Short press. `None` for `folder`/`page`/`empty` keys, which navigate via `target`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hold: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) double: Option<String>,
+    /// Page this key navigates to, for `kind: folder | page`. Names a `Page::id` in the same deck.
+    ///
+    /// PROTOCOL AMENDMENT (F2): the draft's fixtures show `folder` keys with no destination
+    /// because the FP mock-up hardcoded the jump client-side. Real navigation has to name a page,
+    /// so `target` is added rather than overloading `action` with a second grammar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) target: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) danger: bool,
+    /// Live state (recording, app running, mic muted). Filled in per-send, never persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) state: Option<serde_json::Value>,
+    pub(crate) kind: KeyKind,
+}
+
+impl Key {
+    /// The action for a press type, or `None` if that press is unbound. `long`/`double` do NOT
+    /// fall back to the short action: a key that only defines `action` must ignore a long press
+    /// rather than fire twice on an accidental hold.
+    pub(crate) fn action_for(&self, press: &str) -> Option<&str> {
+        match press {
+            "short" => self.action.as_deref(),
+            "long" => self.hold.as_deref(),
+            "double" => self.double.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// A grid's worth of keys. `id` exists so `folder`/`page` keys can name a destination.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub(crate) struct Page {
+    pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) name: String,
+    pub(crate) keys: Vec<Key>,
+}
+
+/// A deck the user picks in manual mode. `pages[0]` is the entry page.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub(crate) struct Deck {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) icon: String,
+    pub(crate) pages: Vec<Page>,
+}
+
+impl Deck {
+    pub(crate) fn page(&self, id: &str) -> Option<&Page> {
+        self.pages.iter().find(|p| p.id == id)
+    }
 }
 
 fn b(label: &str, icon: &str, action: &str) -> Button {
@@ -798,6 +893,66 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
     }
     list
 }
+/// Keys per page in the decks shipped by default. Decks are authored against the reference 5×3
+/// device; the host repaginates to whatever grid the client declares in `hello`, so this number is
+/// an authoring convention, not a constraint on the client.
+const REFERENCE_PAGE: usize = 15;
+
+/// v1 had no manual mode, so there is nothing to carry over — but landing in manual mode with an
+/// empty grid looks broken. This seeds one starter deck from the generic profile's recommended
+/// buttons, spread over two pages, plus the v2-only keys (window switcher, mode switch) that had
+/// no equivalent in v1. F4 replaces it with a deck built from the machine's most-used apps.
+fn default_decks() -> Vec<Deck> {
+    let generic = default_profiles().into_iter().find(|p| p.id == "generic");
+    let mut keys: Vec<Key> = generic
+        .map(|p| p.buttons)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|b| b.recommended)
+        .map(|b| Key {
+            label: b.label,
+            icon: b.icon,
+            action: Some(b.action),
+            danger: b.danger,
+            kind: KeyKind::Action,
+            ..Default::default()
+        })
+        .collect();
+    // v2-only keys: they have no v1 button to migrate from.
+    keys.push(Key {
+        label: "Ventanas".into(),
+        icon: "windows".into(),
+        action: Some("windows".into()),
+        kind: KeyKind::Action,
+        ..Default::default()
+    });
+    keys.push(Key {
+        label: "Auto".into(),
+        icon: "mode".into(),
+        action: Some("mode:auto".into()),
+        kind: KeyKind::Action,
+        ..Default::default()
+    });
+
+    let mut pages: Vec<Page> = keys
+        .chunks(REFERENCE_PAGE)
+        .enumerate()
+        .map(|(i, chunk)| Page {
+            id: format!("p{i}"),
+            name: String::new(),
+            keys: chunk
+                .iter()
+                .enumerate()
+                .map(|(pos, k)| Key { pos, ..k.clone() })
+                .collect(),
+        })
+        .collect();
+    if pages.is_empty() {
+        pages.push(Page { id: "p0".into(), ..Default::default() });
+    }
+    vec![Deck { id: "starter".into(), name: "KiBoard".into(), icon: "deck".into(), pages }]
+}
+
 // ---------------------------------------------------------------------------
 // Persistent configuration
 // ---------------------------------------------------------------------------
@@ -805,6 +960,10 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
 /// Version of the built-in profiles. Bump it when `default_profiles` changes so already-installed
 /// hosts refresh them (keeping the token and pairing).
 const PROFILES_VERSION: u32 = 36;
+
+/// Shape of `config.json`. Bumped when the model changes in a way `#[serde(default)]` cannot
+/// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
+const CONFIG_VERSION: u32 = 2;
 
 /// A phone paired via the v2 six-digit-code flow (protocol/README.md §2). Each device gets its
 /// own token, individually revocable — the pre-F1 model had one shared `token` for everyone.
@@ -837,6 +996,12 @@ pub(crate) struct Config {
     pub(crate) profiles: Vec<Profile>,
     #[serde(default)]
     profiles_version: u32,
+    /// MANUAL mode: decks the user picks. Absent in a v1 file — seeded on migration.
+    #[serde(default)]
+    pub(crate) decks: Vec<Deck>,
+    /// Shape of this file. 0 = a v1 file (the field did not exist), 2 = the v2 model.
+    #[serde(default)]
+    config_version: u32,
     /// OBS WebSocket server password (empty if the server has no auth).
     #[serde(default)]
     pub(crate) obs_password: String,
@@ -856,11 +1021,23 @@ impl Config {
         dir.join("config.json")
     }
     fn load() -> Config {
-        let mut c: Config = std::fs::read_to_string(Self::path())
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+        let raw = std::fs::read_to_string(Self::path()).ok();
+        let mut c: Config = raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
             // Fresh install (no file): analytics ON by default; derive(Default) would give false.
             .unwrap_or(Config { analytics: true, pairing_open: true, ..Default::default() });
+        // Migrating a v1 file (no `config_version`): keep it verbatim before the v2 shape is
+        // written over it. Profiles the user edited by hand are otherwise unrecoverable.
+        if c.config_version < CONFIG_VERSION {
+            if let Some(raw) = raw.as_deref() {
+                let _ = std::fs::write(Self::path().with_file_name("config.v1.bak"), raw);
+            }
+            c.config_version = CONFIG_VERSION;
+        }
+        if c.decks.is_empty() {
+            c.decks = default_decks();
+        }
         if c.token.is_empty() {
             c.token = new_token();
         }
@@ -899,7 +1076,7 @@ pub(crate) fn new_token() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_profiles, Profile};
+    use super::{default_decks, default_profiles, Key, KeyKind, Profile, REFERENCE_PAGE};
 
     // Same predicate as layout_for: first profile whose `matches` shows up in "{app} {title}".
     fn profile_for<'a>(profiles: &'a [Profile], app: &str, title: &str) -> &'a str {
@@ -920,6 +1097,52 @@ mod tests {
         assert_eq!(profile_for(&profiles, "WindowsTerminal", "codex — repo"), "ai");
         // A plain terminal (no agent) must NOT fall into "ai".
         assert_eq!(profile_for(&profiles, "WindowsTerminal", "Windows PowerShell"), "shell-pwsh");
+    }
+
+    // --- v2 Deck/Page/Key model ---
+
+    #[test]
+    fn starter_deck_is_addressable_by_position() {
+        let decks = default_decks();
+        let deck = decks.first().expect("a starter deck");
+        assert!(!deck.pages.is_empty());
+        for page in &deck.pages {
+            assert!(page.keys.len() <= REFERENCE_PAGE);
+            // `pos` IS the address the phone sends back in a `key` message: it must be the index,
+            // contiguous from 0, or the host resolves a press to the wrong action.
+            for (i, k) in page.keys.iter().enumerate() {
+                assert_eq!(k.pos, i, "page {} key {} has pos {}", page.id, i, k.pos);
+            }
+            // Every navigating key must name a page that exists in this deck.
+            for k in &page.keys {
+                if matches!(k.kind, KeyKind::Folder | KeyKind::Page) {
+                    let t = k.target.as_deref().expect("a navigating key needs a target");
+                    assert!(deck.page(t).is_some(), "key targets missing page {t}");
+                }
+                if matches!(k.kind, KeyKind::Action) {
+                    assert!(k.action.is_some(), "an action key needs an action");
+                }
+            }
+        }
+    }
+
+    // A hold that is not configured must do NOTHING, not repeat the short press: holding a key
+    // bound to "Cerrar app" would otherwise fire it on an accidental long press.
+    #[test]
+    fn unbound_presses_do_not_fall_back() {
+        let k = Key { action: Some("ctrl+c".into()), kind: KeyKind::Action, ..Default::default() };
+        assert_eq!(k.action_for("short"), Some("ctrl+c"));
+        assert_eq!(k.action_for("long"), None);
+        assert_eq!(k.action_for("double"), None);
+        assert_eq!(k.action_for("nonsense"), None);
+    }
+
+    // An empty key must serialize to just its position and kind: it is sent on every layout, and
+    // 15 of them per page adds up against the 64 KB frame cap.
+    #[test]
+    fn empty_key_serializes_minimally() {
+        let json = serde_json::to_string(&Key { pos: 10, ..Default::default() }).unwrap();
+        assert_eq!(json, r#"{"pos":10,"kind":"empty"}"#);
     }
 
     // The TITLE identifies the active shell (Windows Terminal changes it per tab). Real titles
