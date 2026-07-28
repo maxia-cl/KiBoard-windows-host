@@ -298,6 +298,12 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     );
                     // Client's language: catalogue labels are served translated. The 500ms poll
                     // re-broadcasts the layout on its own (the JSON changes when the locale changes).
+                    //
+                    // KNOWN LIMIT: the locale is process-global, so two phones in different
+                    // languages fight over it and the last to connect wins. Fixing it means
+                    // translating at render time per connection, the same move the grid needed —
+                    // `AutoLayout` would carry label keys instead of finished strings. Not worth it
+                    // until someone actually pairs two phones with different languages.
                     crate::i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
                     let decks: Vec<_> = config()
                         .lock()
