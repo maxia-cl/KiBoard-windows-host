@@ -890,10 +890,6 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
     // "Close app" (red + confirmation) on EVERY profile.
     for p in &mut list {
         p.buttons.push(bd("Cerrar app", "close", "alt+F4"));
-        // The way OUT of auto mode. Without it the switch is one-way: the decks carry an "Auto"
-        // key, but nothing in auto mode reaches the decks. An extra rather than a recommended
-        // button, so it never displaces an app action on the first page.
-        p.buttons.push(bx("Mazos", "deck", "mode:manual"));
     }
     list
 }
@@ -1030,19 +1026,16 @@ fn launcher_deck() -> Option<Deck> {
         kind: KeyKind::Action,
         ..Default::default()
     }));
+    // ONE page, not chunks of REFERENCE_PAGE. A `Page` is only reachable through a key that
+    // navigates to it, and a generated deck has no such keys — chunked, everything past the first
+    // fifteen apps was unreachable (the phone showed two dots for sixty-one keys). A single long
+    // page is exactly what repagination is for: the host cuts it to the client's grid and the user
+    // swipes.
     Some(Deck {
         id: "launcher".into(),
         name: "Launcher".into(),
         icon: "apps".into(),
-        pages: keys
-            .chunks(REFERENCE_PAGE)
-            .enumerate()
-            .map(|(i, chunk)| Page {
-                id: format!("p{i}"),
-                name: String::new(),
-                keys: chunk.iter().enumerate().map(|(pos, k)| Key { pos, ..k.clone() }).collect(),
-            })
-            .collect(),
+        pages: vec![Page { id: "p0".into(), name: String::new(), keys }],
     })
 }
 
@@ -1208,7 +1201,12 @@ mod tests {
         for deck in &decks {
             assert!(!deck.pages.is_empty());
             for page in &deck.pages {
-                assert!(page.keys.len() <= REFERENCE_PAGE);
+                // Hand-authored decks are written against the reference 5×3 grid. A GENERATED deck
+                // (the Launcher) is deliberately one long page instead, because repagination — not
+                // a `Page` boundary the user cannot navigate to — is what cuts it for the client.
+                if deck.id != "launcher" {
+                    assert!(page.keys.len() <= REFERENCE_PAGE);
+                }
                 // `pos` IS the address the phone sends back in a `key` message: it must be the
                 // index, contiguous from 0, or the host resolves a press to the wrong action.
                 for (i, k) in page.keys.iter().enumerate() {

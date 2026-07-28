@@ -161,7 +161,6 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Marcar", "Pick", "留用"),
     ("Marcar leído", "Mark read", "标为已读"),
     ("Marco", "Frame", "框架"),
-    ("Mazos", "Decks", "卡组"),
     ("Me gusta", "Like", "点赞"),
     ("Mes", "Month", "月"),
     ("Mic", "Mic", "麦克风"),
@@ -244,6 +243,8 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Terminal", "Terminal", "终端"),
     ("Texto", "Text", "文本"),
     ("Vencimiento", "Due date", "截止日期"),
+    // Deck keys, translatable only since decks started going through `tr` (F4).
+    ("Ventanas", "Windows", "窗口"),
     ("Vista previa", "Preview", "预览"),
     ("Vídeo", "Video", "视频"),
     ("Zoom", "Zoom", "缩放"),
