@@ -2,6 +2,8 @@
 // needs something legible enough to validate layout and drag interactions.
 const GLYPHS = {
   app: "\u{1F4E6}",
+  apps: "\u{1F5C3}️",
+  deck: "\u{1F5C4}️",
   brush: "\u{1F58C}️",
   crop: "✂️",
   undo: "↩️",

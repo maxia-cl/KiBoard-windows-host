@@ -161,6 +161,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Marcar", "Pick", "留用"),
     ("Marcar leído", "Mark read", "标为已读"),
     ("Marco", "Frame", "框架"),
+    ("Mazos", "Decks", "卡组"),
     ("Me gusta", "Like", "点赞"),
     ("Mes", "Month", "月"),
     ("Mic", "Mic", "麦克风"),

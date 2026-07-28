@@ -890,6 +890,10 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
     // "Close app" (red + confirmation) on EVERY profile.
     for p in &mut list {
         p.buttons.push(bd("Cerrar app", "close", "alt+F4"));
+        // The way OUT of auto mode. Without it the switch is one-way: the decks carry an "Auto"
+        // key, but nothing in auto mode reaches the decks. An extra rather than a recommended
+        // button, so it never displaces an app action on the first page.
+        p.buttons.push(bx("Mazos", "deck", "mode:manual"));
     }
     list
 }
@@ -949,6 +953,18 @@ fn default_decks() -> Vec<Deck> {
         kind: KeyKind::Action,
         ..Default::default()
     });
+    // Only offer the jump if the machine actually produced a Launcher — a key that answers
+    // no_such_key is worse than no key.
+    let launcher = launcher_deck();
+    if launcher.is_some() {
+        keys.push(Key {
+            label: "Launcher".into(),
+            icon: "apps".into(),
+            action: Some("deck:launcher".into()),
+            kind: KeyKind::Action,
+            ..Default::default()
+        });
+    }
 
     let mut pages: Vec<Page> = keys
         .chunks(REFERENCE_PAGE)
@@ -968,7 +984,7 @@ fn default_decks() -> Vec<Deck> {
     }
     let mut decks =
         vec![Deck { id: "starter".into(), name: "KiBoard".into(), icon: "deck".into(), pages }];
-    decks.extend(launcher_deck());
+    decks.extend(launcher);
     decks
 }
 
@@ -986,25 +1002,34 @@ const LAUNCHER_APPS: usize = 60;
 /// are famously unreliable; ordering by real usage belongs with the editor in F5.
 fn launcher_deck() -> Option<Deck> {
     let windir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()).to_lowercase();
-    let keys: Vec<Key> = crate::platform::apps::catalogue()
+    let apps: Vec<&crate::platform::apps::App> = crate::platform::apps::catalogue()
         .iter()
         .filter(|a| !a.exe.to_lowercase().starts_with(&windir))
         .take(LAUNCHER_APPS)
-        .enumerate()
-        .map(|(pos, a)| Key {
-            pos,
-            label: a.name.clone(),
-            icon: "app".into(),
-            action: Some(format!("launch:{}", a.id)),
-            // Long press focuses without launching — Elgato's "Key Logic" shape (protocol §3).
-            hold: Some(format!("focus:{}", a.id)),
-            kind: KeyKind::Action,
-            ..Default::default()
-        })
         .collect();
-    if keys.is_empty() {
+    if apps.is_empty() {
         return None; // no catalogue (non-Windows, or the enumeration failed): no empty deck
     }
+    // The way back, first key: a generated deck has no navigation of its own, and paging through
+    // sixty apps to find an exit is not an exit.
+    let mut keys = vec![Key {
+        pos: 0,
+        label: "Auto".into(),
+        icon: "mode".into(),
+        action: Some("mode:auto".into()),
+        kind: KeyKind::Action,
+        ..Default::default()
+    }];
+    keys.extend(apps.into_iter().enumerate().map(|(i, a)| Key {
+        pos: i + 1,
+        label: a.name.clone(),
+        icon: "app".into(),
+        action: Some(format!("launch:{}", a.id)),
+        // Long press focuses without launching — Elgato's "Key Logic" shape (protocol §3).
+        hold: Some(format!("focus:{}", a.id)),
+        kind: KeyKind::Action,
+        ..Default::default()
+    }));
     Some(Deck {
         id: "launcher".into(),
         name: "Launcher".into(),
@@ -1027,7 +1052,7 @@ fn launcher_deck() -> Option<Deck> {
 
 /// Version of the built-in profiles. Bump it when `default_profiles` changes so already-installed
 /// hosts refresh them (keeping the token and pairing).
-const PROFILES_VERSION: u32 = 36;
+const PROFILES_VERSION: u32 = 37;
 
 /// Shape of `config.json`. Bumped when the model changes in a way `#[serde(default)]` cannot
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.

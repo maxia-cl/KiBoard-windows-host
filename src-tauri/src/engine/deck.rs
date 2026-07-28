@@ -128,6 +128,14 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
     let at_page = at_page.min(total - 1);
     let mut keys = keys_for(page, grid, at_page);
     decorate_apps(&mut keys);
+    // Auto mode has translated its labels since v1; decks never did, so a Chinese phone was shown
+    // "Ventanas" and "Mazos". `tr` returns anything it does not know unchanged, which is exactly
+    // right for a user's own label and for the OS-localized app names on the Launcher deck.
+    for k in &mut keys {
+        if !k.label.is_empty() {
+            k.label = crate::i18n::tr(&k.label).to_string();
+        }
+    }
     json!({
         "v": 2,
         "type": "layout",
