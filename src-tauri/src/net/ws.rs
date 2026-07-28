@@ -45,6 +45,20 @@ pub fn publish_layout(layout: AutoLayout) {
     let _ = tx().send(layout);
 }
 
+/// "The decks changed" — a SEPARATE channel from the auto-mode one, because the two audiences are
+/// exactly opposite: auto's broadcast is ignored by manual sessions, and this one is ignored by
+/// auto sessions. Carries no payload; each session re-renders its OWN deck, page and grid.
+static DECKS_TX: OnceLock<broadcast::Sender<()>> = OnceLock::new();
+fn decks_tx() -> &'static broadcast::Sender<()> {
+    DECKS_TX.get_or_init(|| broadcast::channel(4).0)
+}
+
+/// Re-sends its layout to every phone sitting in manual mode. Called after the editor saves, so
+/// the deck on the desk and the deck in the hand cannot disagree about what a key does.
+pub fn push_manual_layouts() {
+    let _ = decks_tx().send(());
+}
+
 pub async fn run_ws_server() {
     let listener = match TcpListener::bind(("0.0.0.0", WS_PORT)).await {
         Ok(l) => l,
@@ -73,6 +87,7 @@ async fn handle_conn(stream: TcpStream) {
     };
     let (mut write, mut read) = ws.split();
     let mut rx = tx().subscribe();
+    let mut decks_rx = decks_tx().subscribe();
     let mut session = Session::default();
     let mut failed_auth = 0u32; // token/code brute-force brake
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
@@ -117,6 +132,15 @@ async fn handle_conn(stream: TcpStream) {
                     // would yank the layout out from under it on the next foreground-app change.
                     if session.authed && !session.manual {
                         let msg = auto_layout_json(&layout, session.grid, session.page);
+                        if write.send(Message::text(msg)).await.is_err() { break; }
+                    }
+                }
+            }
+            // The editor saved. The mirror image of the arm above: only manual sessions care, and
+            // each renders its own deck/page rather than being handed one.
+            saved = decks_rx.recv() => {
+                if saved.is_ok() && session.authed && session.manual {
+                    if let Some(msg) = manual_layout(&mut session) {
                         if write.send(Message::text(msg)).await.is_err() { break; }
                     }
                 }

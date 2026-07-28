@@ -171,6 +171,50 @@ fn save_profiles(profiles: Vec<Profile>) -> serde_json::Value {
     json!({ "ok": true })
 }
 
+// ---------------------------------------------------------------------------
+// Editor (F5): the decks of manual mode, on real data
+// ---------------------------------------------------------------------------
+
+/// The decks as stored. Same struct that travels on the wire (§3), so the editor cannot drift
+/// from the protocol by editing a shape only it understands.
+#[tauri::command]
+fn get_decks() -> Vec<config::Deck> {
+    config().lock().unwrap().decks.clone()
+}
+
+/// Saves the edited decks. Every connected phone in manual mode is re-sent its layout, so the
+/// editor's device and the real one never disagree about what a key does.
+#[tauri::command]
+fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
+    if let Err(e) = engine::deck::validate(&decks) {
+        // Refusing beats saving a deck whose keys resolve to nothing on the phone.
+        return json!({ "ok": false, "error": e });
+    }
+    {
+        let mut cfg = config().lock().unwrap();
+        cfg.decks = decks;
+        cfg.save();
+    }
+    net::ws::push_manual_layouts();
+    json!({ "ok": true })
+}
+
+/// The machine's app catalogue (F4) with its real icons, for the editor's Apps group.
+#[tauri::command]
+fn app_catalogue() -> Vec<serde_json::Value> {
+    platform::apps::catalogue()
+        .iter()
+        .map(|a| {
+            let icon = platform::apps::icon(&a.id);
+            json!({
+                "id": a.id,
+                "name": a.name,
+                "image": (!icon.is_empty()).then(|| format!("data:image/png;base64,{icon}")),
+            })
+        })
+        .collect()
+}
+
 /// OBS integration status for the host UI.
 #[tauri::command]
 fn obs_info() -> serde_json::Value {
@@ -273,6 +317,9 @@ pub fn run() {
             unpair_all,
             get_profiles,
             save_profiles,
+            get_decks,
+            save_decks,
+            app_catalogue,
             profile_qr,
             obs_info,
             set_obs_password,
