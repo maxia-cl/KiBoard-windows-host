@@ -926,6 +926,22 @@ fn default_decks() -> Vec<Deck> {
         kind: KeyKind::Action,
         ..Default::default()
     });
+    // The trackpad and dictation are §4.2.1 client-side screens. They were loose UI in v1; in v2
+    // everything is a key, so this is the only way to reach them.
+    keys.push(Key {
+        label: "Trackpad".into(),
+        icon: "mouse".into(),
+        action: Some("trackpad".into()),
+        kind: KeyKind::Action,
+        ..Default::default()
+    });
+    keys.push(Key {
+        label: "Dictar".into(),
+        icon: "mic".into(),
+        action: Some("dictate".into()),
+        kind: KeyKind::Action,
+        ..Default::default()
+    });
     keys.push(Key {
         label: "Auto".into(),
         icon: "mode".into(),

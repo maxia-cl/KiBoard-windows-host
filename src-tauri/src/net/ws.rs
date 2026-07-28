@@ -123,6 +123,12 @@ async fn handle_conn(stream: TcpStream) {
             }
         }
     }
+    // A phone that vanished mid-drag (Wi-Fi drop, app killed, screen off) never sends its release.
+    // Without this the left button stays down and the desktop is unusable.
+    if session.dragging {
+        eprintln!("KiBoard: client left mid-drag — releasing the left button");
+        let _ = run_action("release:left");
+    }
     if session.authed {
         CLIENTS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -142,6 +148,10 @@ pub(crate) struct Session {
     pub(crate) deck_id: String,
     pub(crate) page_id: String,
     pub(crate) page: usize,
+    /// The trackpad has the left button latched down (`input` kind `drag`). Tracked so the
+    /// connection can release it if this client disappears: a held button outlives the phone that
+    /// pressed it, and a desktop stuck mid-drag is unusable until something lets go.
+    pub(crate) dragging: bool,
 }
 
 /// Builds the `layout` for whatever deck/page this session is on, snapping the session onto the
@@ -207,10 +217,20 @@ fn input_action(val: &serde_json::Value) -> Result<String, &'static str> {
     match val["kind"].as_str() {
         Some("mouse") => Ok(format!("mouse:{},{}", num("dx"), num("dy"))),
         Some("scroll") => Ok(format!("scroll:{}", num("n"))),
+        Some("hscroll") => Ok(format!("hscroll:{}", num("n"))),
+        Some("zoom") => Ok(format!("zoom:{}", num("n"))),
         Some("click") => match val["button"].as_str() {
             Some("right") => Ok("click:right".into()),
             _ => Ok("click:left".into()),
         },
+        // Latches the left button so a finger can drag. The RELEASE is also tracked on the session
+        // (see `dragging`), because a phone that walks out of Wi-Fi range mid-drag would otherwise
+        // leave the button held down and the desktop unusable.
+        Some("drag") => Ok(if val["down"].as_bool().unwrap_or(false) {
+            "hold:left".into()
+        } else {
+            "release:left".into()
+        }),
         Some("vol") => Ok(format!("vol:{}", num("level").clamp(0, 100))),
         // Dictation. The text is typed verbatim; `type:` never interprets it as a hotkey.
         Some("text") => match val["text"].as_str() {
@@ -221,13 +241,26 @@ fn input_action(val: &serde_json::Value) -> Result<String, &'static str> {
     }
 }
 
-/// Actions that move THIS session rather than driving the desktop (`deck:`, `mode:`, `windows`).
+/// Actions that move THIS session rather than driving the desktop (`deck:`, `mode:`, `windows`),
+/// plus the ones that are purely a screen on the phone (§4.2.1).
 fn is_session_action(action: &str) -> bool {
-    action == "windows" || action.starts_with("deck:") || action.starts_with("mode:")
+    action == "windows"
+        || is_client_action(action)
+        || action.starts_with("deck:")
+        || action.starts_with("mode:")
+}
+
+/// Screens the PHONE opens (§4.2.1). The host has no work to do — what arrives afterwards is
+/// `input` — but it answers ok so a client that does send the press is not shown a false error.
+fn is_client_action(action: &str) -> bool {
+    action == "trackpad" || action == "dictate"
 }
 
 fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
     let fail = |e: &str| json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string();
+    if is_client_action(action) {
+        return json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string();
+    }
     if let Some(deck_id) = action.strip_prefix("deck:") {
         if !config().lock().unwrap().decks.iter().any(|d| d.id == deck_id) {
             return fail("no_such_key");
@@ -356,6 +389,9 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
         Some("input") => {
             if !s.authed {
                 return json!({"v":2,"type":"key_result","ok":false,"error":"not_paired"}).to_string();
+            }
+            if val["kind"].as_str() == Some("drag") {
+                s.dragging = val["down"].as_bool().unwrap_or(false);
             }
             match input_action(&val).and_then(|a| run_action(&a)) {
                 Ok(()) => json!({"v":2,"type":"key_result","ok":true}).to_string(),
