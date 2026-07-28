@@ -113,7 +113,7 @@ fn decorate_apps(keys: &mut [Key]) {
         let key = &mut keys[i];
         // The stored key wins: a custom image set in the editor is not overwritten by the exe's.
         if key.image.is_none() {
-            let b64 = crate::platform::icon_cached(crate::platform::apps::exe_of(&id));
+            let b64 = crate::platform::apps::icon(&id);
             if !b64.is_empty() {
                 key.image = Some(format!("data:image/png;base64,{b64}"));
             }

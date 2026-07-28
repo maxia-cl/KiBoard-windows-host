@@ -1075,6 +1075,7 @@ dependencies = [
  "dirs 5.0.1",
  "enigo",
  "futures-util",
+ "image",
  "local-ip-address",
  "mdns-sd",
  "qrcode",

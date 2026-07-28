@@ -2,9 +2,8 @@
 //!
 //! Enumeration goes through `Get-StartApps`, which IS the AppsFolder listing — the same set the
 //! Start menu shows, UWP included, already localized.
-//! ponytail: the COM route (IKnownFolderManager + IEnumShellItems + IShellItemImageFactory) is
-//! ~150 lines of unsafe for the identical list; upgrade if the one-off ~700 ms boot cost, or UWP
-//! icons, ever matter.
+//! ponytail: the COM enumeration route (IKnownFolderManager + IEnumShellItems) is ~150 lines of
+//! unsafe for the identical list; upgrade if the one-off ~700 ms boot cost ever matters.
 
 /// One entry of the catalogue. `id` is what a `launch:` / `focus:` / `kill:` key stores.
 #[derive(Clone, Debug, Default, serde::Serialize)]
@@ -13,10 +12,8 @@ pub struct App {
     /// (`{GUID}\rel\app.exe`) or an absolute path.
     pub id: String,
     pub name: String,
-    /// Absolute path when it can be resolved — that is what gives the key its real icon. Empty for
-    /// packaged (UWP) entries, which have no executable of their own: those keys fall back to the
-    /// logical `app` glyph. ponytail: real UWP tiles need IShellItemImageFactory over
-    /// `shell:AppsFolder\<AUMID>`; add it if the blank half of the Launcher deck bothers anyone.
+    /// Absolute path when it can be resolved. Empty for packaged (UWP) entries, which have no
+    /// executable of their own — `icon` gets theirs from the shell instead.
     pub exe: String,
 }
 
@@ -57,13 +54,35 @@ fn windows_of(id: &str) -> Vec<isize> {
         .collect()
 }
 
-/// The executable behind a catalogue id, or "" — what gives a `launch:` key its real icon.
-pub fn exe_of(id: &str) -> &'static str {
+/// The executable behind a catalogue id, or "".
+fn exe_of(id: &str) -> &'static str {
     catalogue()
         .iter()
         .find(|a| a.id == id)
         .map(|a| a.exe.as_str())
         .unwrap_or("")
+}
+
+/// The app's real icon as base64 PNG, or "" — what a `launch:` key shows instead of a glyph.
+///
+/// Two sources, because a packaged app has no executable to pull an icon out of: a desktop app
+/// goes through the exe's own icon, everything else asks the shell for the tile it draws in the
+/// Start menu. Both are cached; extracting an icon is expensive and icons do not change.
+pub fn icon(id: &str) -> String {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    let exe = exe_of(id);
+    if !exe.is_empty() {
+        return crate::platform::icon_cached(exe);
+    }
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(b) = cache.lock().unwrap().get(id) {
+        return b.clone();
+    }
+    let b = imp::shell_tile_b64(id);
+    cache.lock().unwrap().insert(id.to_string(), b.clone());
+    b
 }
 
 /// Which of `ids` have at least one open window, in ONE pass over the window list — a layout can
@@ -191,6 +210,123 @@ mod imp {
         }
     }
 
+    /// Side of a shell tile in pixels. The phone draws keys around 113 pt, so 96 is already more
+    /// than it needs and every packaged app ships an asset at least this big.
+    const TILE_PX: i32 = 96;
+
+    /// The icon the Start menu draws for a catalogue entry, as base64 PNG.
+    ///
+    /// This is the only source for a packaged app: there is no executable to pull an icon out of,
+    /// and `C:\Program Files\WindowsApps` denies even traversal, so reading the package's own
+    /// assets is not an option. `IShellItemImageFactory` over `shell:AppsFolder\<AppID>` asks the
+    /// shell for the same bitmap it draws itself, ACLs and all.
+    pub fn shell_tile_b64(id: &str) -> String {
+        use windows::Win32::Foundation::SIZE;
+        use windows::Win32::Graphics::Gdi::{DeleteObject, HGDIOBJ};
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        use windows::Win32::UI::Shell::{
+            IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY,
+        };
+        unsafe {
+            // Harmless if this thread is already initialized (or initialized in another mode):
+            // the shell call below is what actually reports failure.
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let path: Vec<u16> = format!("shell:AppsFolder\\{id}\0").encode_utf16().collect();
+            let factory: IShellItemImageFactory =
+                match SHCreateItemFromParsingName(windows::core::PCWSTR(path.as_ptr()), None) {
+                    Ok(f) => f,
+                    Err(_) => return String::new(),
+                };
+            // ICONONLY, never a document thumbnail: a launcher key must show what the app IS, not
+            // a preview of whatever it last opened.
+            let Ok(hbmp) = factory.GetImage(SIZE { cx: TILE_PX, cy: TILE_PX }, SIIGBF_ICONONLY)
+            else {
+                return String::new();
+            };
+            let out = bitmap_to_png_b64(hbmp);
+            let _ = DeleteObject(HGDIOBJ(hbmp.0));
+            out
+        }
+    }
+
+    /// HBITMAP -> base64 PNG. The shell hands back a 32-bit top-down DIB in BGRA with
+    /// PREMULTIPLIED alpha, so the channels are both reordered and undone here.
+    unsafe fn bitmap_to_png_b64(hbmp: windows::Win32::Graphics::Gdi::HBITMAP) -> String {
+        use base64::Engine;
+        use windows::Win32::Graphics::Gdi::{
+            GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
+            BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+        };
+        let mut bm = BITMAP::default();
+        let n = unsafe {
+            GetObjectW(
+                HGDIOBJ(hbmp.0),
+                std::mem::size_of::<BITMAP>() as i32,
+                Some(&mut bm as *mut _ as *mut _),
+            )
+        };
+        if n == 0 || bm.bmWidth <= 0 || bm.bmHeight <= 0 {
+            return String::new();
+        }
+        let (w, h) = (bm.bmWidth as u32, bm.bmHeight as u32);
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: bm.bmWidth,
+                // Negative height = top-down rows, the order an image buffer wants.
+                biHeight: -bm.bmHeight,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let ok = unsafe {
+            let dc = GetDC(None);
+            let r = GetDIBits(
+                dc,
+                hbmp,
+                0,
+                h,
+                Some(buf.as_mut_ptr() as *mut _),
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+            ReleaseDC(None, dc);
+            r
+        };
+        if ok == 0 {
+            return String::new();
+        }
+        // Some entries come back with a zeroed alpha channel (a bitmap that never had one). Taken
+        // literally that is a fully transparent icon, i.e. a blank key — treat it as opaque.
+        let opaque = buf.chunks_exact(4).all(|p| p[3] == 0);
+        for px in buf.chunks_exact_mut(4) {
+            let (b, g, r, a) = (px[0], px[1], px[2], px[3]);
+            if opaque {
+                px[0] = r;
+                px[2] = b;
+                px[3] = 255;
+                continue;
+            }
+            // Undo the premultiplication, or every semi-transparent edge renders too dark.
+            let un = |c: u8| if a == 0 { 0 } else { ((c as u32 * 255) / a as u32).min(255) as u8 };
+            px[0] = un(r);
+            px[1] = un(g);
+            px[2] = un(b);
+        }
+        let Some(img) = image::RgbaImage::from_raw(w, h, buf) else {
+            return String::new();
+        };
+        let mut png = std::io::Cursor::new(Vec::new());
+        if img.write_to(&mut png, image::ImageFormat::Png).is_err() {
+            return String::new();
+        }
+        base64::engine::general_purpose::STANDARD.encode(png.into_inner())
+    }
+
     /// Starts the app. `explorer shell:AppsFolder\<AppID>` is the documented activation for ANY
     /// Start-menu entry, UWP included, without needing IApplicationActivationManager.
     pub fn activate(id: &str) -> Result<(), &'static str> {
@@ -227,6 +363,9 @@ mod imp {
     }
     pub fn activate(_id: &str) -> Result<(), &'static str> {
         Err("unsupported_platform")
+    }
+    pub fn shell_tile_b64(_id: &str) -> String {
+        String::new()
     }
 }
 
