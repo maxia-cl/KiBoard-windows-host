@@ -1,8 +1,7 @@
-// i18n del catálogo de perfiles. La etiqueta en ESPAÑOL es la fuente de verdad (así están
-// escritas en default_profiles y en los config.json ya guardados); esta tabla la traduce al
-// vuelo en layout_for según el locale que el móvil declaró en su "hello". Etiquetas que no
-// están en la tabla (perfiles editados por el usuario) se muestran tal cual — texto del
-// usuario no se traduce.
+// i18n for the profile catalogue. The SPANISH label is the source of truth (that's how they're
+// written in default_profiles and in already-saved config.json files); this table translates it
+// on the fly in layout_for according to the locale the phone declared in its "hello". Labels not
+// in the table (profiles edited by the user) are shown as-is — user text is never translated.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -10,8 +9,8 @@ const ES: u8 = 0;
 const EN: u8 = 1;
 const ZH: u8 = 2;
 
-// ponytail: locale GLOBAL del host (el último hello gana) — per-cliente solo si algún día
-// conectan a la vez dos teléfonos en idiomas distintos.
+// ponytail: GLOBAL host locale (the last hello wins) — per-client only if two phones in
+// different languages ever connect at the same time.
 static LOCALE: AtomicU8 = AtomicU8::new(ES);
 
 pub fn set_locale(lang: &str) {
@@ -27,16 +26,16 @@ pub fn set_locale(lang: &str) {
 
 pub fn tr(label: &str) -> &str {
     match LOCALE.load(Ordering::Relaxed) {
-        // ponytail: búsqueda lineal sobre ~190 entradas cada 500ms — irrelevante; HashMap si
-        // el catálogo creciera 10x.
+        // ponytail: linear search over ~190 entries every 500ms — irrelevant; HashMap if the
+        // catalogue ever grows 10x.
         EN => TABLE.iter().find(|e| e.0 == label).map(|e| e.1).unwrap_or(label),
         ZH => TABLE.iter().find(|e| e.0 == label).map(|e| e.2).unwrap_or(label),
         _ => label,
     }
 }
 
-/// (es, en, zh-Hans). Cubre todas las etiquetas de default_profiles + las dinámicas de OBS.
-/// El test de abajo falla si un perfil nuevo usa una etiqueta sin traducción.
+/// (es, en, zh-Hans). Covers every label from default_profiles + OBS' dynamic ones.
+/// The test below fails if a new profile uses a label with no translation.
 static TABLE: &[(&str, &str, &str)] = &[
     ("+ Volumen", "Vol +", "音量+"),
     ("- Volumen", "Vol -", "音量-"),
@@ -244,6 +243,8 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Terminal", "Terminal", "终端"),
     ("Texto", "Text", "文本"),
     ("Vencimiento", "Due date", "截止日期"),
+    // Deck keys, translatable only since decks started going through `tr` (F4).
+    ("Ventanas", "Windows", "窗口"),
     ("Vista previa", "Preview", "预览"),
     ("Vídeo", "Video", "视频"),
     ("Zoom", "Zoom", "缩放"),
@@ -256,28 +257,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tabla_sin_duplicados() {
+    fn table_has_no_duplicates() {
         let mut keys: Vec<&str> = TABLE.iter().map(|e| e.0).collect();
         keys.sort();
         let n = keys.len();
         keys.dedup();
-        assert_eq!(n, keys.len(), "clave ES duplicada en TABLE");
+        assert_eq!(n, keys.len(), "duplicate ES key in TABLE");
     }
 
     #[test]
-    fn catalogo_completo() {
-        // Toda etiqueta del catálogo integrado debe tener traducción (si añades un perfil
-        // nuevo y esto falla, agrega la etiqueta a TABLE).
-        let faltan: Vec<String> = crate::default_profiles()
+    fn catalogue_is_fully_translated() {
+        // Every label in the built-in catalogue must have a translation (if you add a new
+        // profile and this fails, add the label to TABLE).
+        let missing: Vec<String> = crate::config::default_profiles()
             .iter()
             .flat_map(|p| p.buttons.iter().map(|b| b.label.clone()))
             .filter(|l| !TABLE.iter().any(|e| e.0 == l))
             .collect();
-        assert!(faltan.is_empty(), "etiquetas sin traducción: {faltan:?}");
+        assert!(missing.is_empty(), "labels with no translation: {missing:?}");
     }
 
     #[test]
-    fn tr_cambia_por_locale() {
+    fn tr_changes_by_locale() {
         set_locale("en");
         assert_eq!(tr("Copiar"), "Copy");
         assert_eq!(tr("etiqueta custom del usuario"), "etiqueta custom del usuario");

@@ -33,17 +33,32 @@ the updater needs a public feed.
 
 ## Status
 
-**Phase FP editor mock-up built.** The drawn device (bezel, keys, model presets), the searchable
-catalogue, the key inspector and all eight drag-and-drop operations from the plan — including
-undo/redo and the double-click/arrow-key accessible path — run against an in-memory `MockBridge`
-and fixtures copied from `KiBoard-protocol` (see `src/mock/README.md`). Verified interactively in a
-running `vite dev` session. The v1 host itself (~2,600 lines) still gets ported and modularized
-rather than rewritten — that starts at **F0**. See the implementation plan in `KiBoard-protocol`.
+**F1 done** (F0 before it). The v1 host (`src-tauri/`) was ported from `ricardomendezv/Kiboard` via
+a `git subtree split` (full history preserved) and modularized into `config.rs`, `net/`, `engine/`,
+`platform/`, `integrations/obs.rs` with no behavior change — verified against a real WebSocket
+handshake using the v1 protocol. `KiBoard-protocol` is pinned as a git submodule at
+`KiBoard-protocol/` (tag `v0.1.0-fp`); `npm run dev`/`build` regenerate `src/tokens.g.css` from it
+automatically.
+
+F1 added real mDNS advertisement (`net/discovery.rs`, the `mdns-sd` crate) and v2 pairing by
+six-digit code with per-device, individually revocable tokens (`net/pairing.rs`) — the host now
+rejects a v1-shaped `hello` with `protocol_too_old`. A "Pairing & devices" panel (the ⚙ button)
+shows the host id, the pending code, and lets you revoke one device without affecting the others.
+Verified with a live pairing round trip against the compiled host and, separately, against the
+shipping Dart client in `KiBoard-app`.
+
+The **phase FP editor mock-up** — the drawn device, the searchable catalogue, the key inspector
+and all eight drag-and-drop operations, including undo/redo and the double-click/arrow-key
+accessible path — still runs against an in-memory `MockBridge`, now reading fixtures straight from
+the submodule instead of a local copy. Verified interactively in a running `vite dev` session. Real
+Tauri wiring (`TauriBridge` replacing `MockBridge`) is F5. See the implementation plan in
+`KiBoard-protocol`.
 
 ## Stack
 
 Tauri 2 + Rust, editor UI in Svelte 5 + Vite. Windows first; platform-specific code is isolated
-under `platform/` from day one, so macOS can follow without unpicking it.
+under `platform/` from day one, so macOS and Linux can follow later, each in its own repo, without
+unpicking it.
 
 ## Conventions
 

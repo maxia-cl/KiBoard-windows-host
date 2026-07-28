@@ -1,7 +1,7 @@
 <script>
   // Simplified for FP: one real fixture (Photoshop) stands in for the ~100-profile catalogue.
   // Real per-app profiles are ported from v1 in F2 (docs/implementation-plan.md §3.2).
-  import layoutPhotoshop from "../mock/fixtures/layout-auto-photoshop.json";
+  import layoutPhotoshop from "../../KiBoard-protocol/protocol/fixtures/layout-auto-photoshop.json";
   import Key from "./Key.svelte";
   import { gridFor } from "./model.js";
 
@@ -43,6 +43,7 @@
   .auto-tab {
     display: flex;
     flex: 1;
+    min-height: 0;
   }
   .profile-list {
     width: 240px;
@@ -50,6 +51,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow-y: auto;
     color: var(--deck-color-text-primary);
   }
   .profile-list input {

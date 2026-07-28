@@ -7,9 +7,11 @@
   import AutoTab from "./lib/AutoTab.svelte";
   import DragGhost from "./lib/DragGhost.svelte";
   import Toast from "./lib/Toast.svelte";
+  import PairingPanel from "./lib/PairingPanel.svelte";
   import { undo, redo } from "./lib/store.svelte.js";
 
   let mode = $state("manual"); // "auto" | "manual" — docs/implementation-plan.md §3.2
+  let showPairing = $state(false);
 
   onMount(() => {
     function onKeydown(e) {
@@ -39,7 +41,7 @@
       <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>Manual</button>
     </div>
     <span class="connected">📱 0 connected (mock)</span>
-    <span class="settings" aria-hidden="true">⚙</span>
+    <button class="settings" onclick={() => (showPairing = true)} aria-label="Pairing &amp; devices">⚙</button>
   </header>
 
   {#if mode === "manual"}
@@ -54,13 +56,17 @@
 
   <DragGhost />
   <Toast />
+  {#if showPairing}
+    <PairingPanel onclose={() => (showPairing = false)} />
+  {/if}
 </div>
 
 <style>
   .app {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
   }
   .watermark {
     background: var(--deck-color-accent, #b22420);
@@ -108,10 +114,16 @@
     color: var(--deck-color-text-secondary);
   }
   .settings {
+    background: none;
+    border: none;
     color: var(--deck-color-text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 4px;
   }
   .columns {
     display: flex;
     flex: 1;
+    min-height: 0;
   }
 </style>
