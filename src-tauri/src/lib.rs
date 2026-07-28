@@ -215,6 +215,13 @@ fn app_catalogue() -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// The user's own OBS scenes, by name. `obs_info` only reports how MANY there are, which is all a
+/// status badge needs; the editor's catalogue needs to offer them one by one.
+#[tauri::command]
+fn obs_scenes() -> Vec<String> {
+    engine::state::obs_state().lock().unwrap().scenes.clone()
+}
+
 /// OBS integration status for the host UI.
 #[tauri::command]
 fn obs_info() -> serde_json::Value {
@@ -320,6 +327,7 @@ pub fn run() {
             get_decks,
             save_decks,
             app_catalogue,
+            obs_scenes,
             profile_qr,
             obs_info,
             set_obs_password,

@@ -6,7 +6,8 @@
   let { deckId } = $props();
 
   let query = $state("");
-  const catalogue = getCatalogue();
+  // Reactive, not a snapshot: the catalogue arrives from the host after mount.
+  let catalogue = $derived(getCatalogue());
   let filteredGroups = $derived(
     catalogue.groups
       .map((g) => ({ ...g, items: g.items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())) }))

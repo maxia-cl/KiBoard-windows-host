@@ -306,6 +306,31 @@ mod tests {
         assert!(resolve(&p, g, 0, 1).is_none());
     }
 
+    /// The editor receives a deck as JSON, edits it and hands it straight back to `save_decks`.
+    /// Every `skip_serializing_if` on `Key` is therefore a chance to drop a field on the way out
+    /// and fail to read it on the way back in — silently, and into the file the user's decks live
+    /// in. A round trip through serde is the cheapest guard against that.
+    #[test]
+    fn a_deck_survives_the_editors_round_trip() {
+        let decks = crate::config::default_decks();
+        let json = serde_json::to_string(&decks).expect("decks serialize");
+        let back: Vec<Deck> = serde_json::from_str(&json).expect("and deserialize");
+        assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            json,
+            "a field was lost on the way through the editor"
+        );
+        // Whatever came back has to still be saveable, or the editor could not save what it read.
+        assert!(validate(&back).is_ok());
+        // The fields that carry meaning are actually there, not merely equal-to-empty on both sides.
+        let launcher = back.iter().find(|d| d.id == "launcher");
+        if let Some(l) = launcher {
+            let key = l.pages[0].keys.iter().find(|k| k.pos == 1).expect("an app key");
+            assert!(key.action.as_deref().unwrap_or("").starts_with("launch:"));
+            assert!(key.hold.as_deref().unwrap_or("").starts_with("focus:"));
+        }
+    }
+
     /// Every rule `validate` enforces is one the phone would otherwise hit as "nothing happens".
     #[test]
     fn validate_rejects_what_the_phone_could_not_resolve() {

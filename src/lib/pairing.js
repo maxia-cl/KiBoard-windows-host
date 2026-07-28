@@ -1,18 +1,8 @@
-// Real Tauri bridge for device management (F1) — unlike the rest of this app (still MockBridge
-// until F5), this talks straight to the compiled host via window.__TAURI__ (withGlobalTauri in
-// tauri.conf.json). Only meaningful when running inside the actual Tauri window, not `vite dev`
-// in a plain browser.
-function invoke(cmd, args) {
-  const api = typeof window !== "undefined" ? window.__TAURI__?.core : undefined;
-  if (!api) {
-    return Promise.reject(new Error("Not running inside the Tauri window"));
-  }
-  return api.invoke(cmd, args);
-}
+// Device management (F1). Shares the one `invoke` helper with the rest of the editor — F5 moved
+// it into bridge.js, when the editor stopped being a mock and needed the same door.
+import { invoke, isTauri } from "./bridge.js";
 
-export function isTauri() {
-  return typeof window !== "undefined" && !!window.__TAURI__;
-}
+export { isTauri };
 
 export function pairingStatus() {
   return invoke("pairing_status");

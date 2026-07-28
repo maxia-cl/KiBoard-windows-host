@@ -6,16 +6,13 @@
   let { deckId } = $props();
 
   let selection = $derived(getSelection());
-  let scope = $derived(
-    selection.pos != null ? resolveScope(deckId, selection.folderId ? null : selection.pageIndex, selection.folderId) : null
-  );
-  let key = $derived(scope ? scope.keys[selection.pos] : null);
+  let scope = $derived(selection.pos != null ? resolveScope(deckId, selection.pageId) : null);
+  // `pos` is the key's ABSOLUTE address in the page, not an index into a dense screen array.
+  let key = $derived(scope?.keys.find((k) => k.pos === selection.pos) ?? null);
   let showIconPicker = $state(false);
 
   function set(field, value) {
-    updateKeyFields(deckId, selection.folderId ? null : selection.pageIndex, selection.folderId, selection.pos, {
-      [field]: value,
-    });
+    updateKeyFields(deckId, selection.pageId, selection.pos, { [field]: value });
   }
 </script>
 

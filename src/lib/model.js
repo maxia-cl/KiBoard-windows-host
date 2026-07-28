@@ -1,30 +1,42 @@
-// Shapes mirror the wire `layout` message in KiBoard-protocol/protocol/README.md §3-4.1,
-// plus two editor-only fields that never cross the wire: `folderId` (kind "folder") and
-// `targetPage` (kind "page"), which tell the mock host which local page to open on press.
+// The wire shape, unchanged: KiBoard-protocol/protocol/README.md §3-4.1.
+//
+// F5 removed two editor-only inventions from phase FP. `folderId` is gone — a folder key is a
+// key of kind "folder" whose `target` names another `Page` of the same deck, which is what the
+// host has resolved since F2. And `targetPage` is gone for the same reason: `target` already
+// names a page id.
 
 import tokens from "../../KiBoard-protocol/protocol/deck-tokens.json";
 
-export const GRID_PRESETS = tokens.gridPresets;
-
-export function gridFor(presetName) {
-  const preset = GRID_PRESETS[presetName] ?? GRID_PRESETS.mk2;
-  return { rows: preset.rows, cols: preset.cols };
-}
-
-export function capacityOf(presetName) {
-  const { rows, cols } = gridFor(presetName);
-  return rows * cols;
-}
+/**
+ * The authoring grid. Decks are written against the reference device and the host repaginates
+ * them onto whatever grid each client declares in `hello`, so this is a convention for drawing,
+ * never a limit on how many keys a page may hold — the same 5x3 the host means by REFERENCE_PAGE.
+ */
+export const AUTHORING_GRID = tokens.gridPresets.mk2;
+export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols;
 
 export function emptyKey(pos) {
   return { pos, kind: "empty" };
 }
 
-/** Pads/truncates a sparse key list into a dense array of the given capacity, indexed by `pos`. */
-export function denseKeys(keys, capacity) {
-  const dense = Array.from({ length: capacity }, (_, pos) => emptyKey(pos));
+/** How many screens of `SCREEN` keys a page occupies. At least one, so an empty page still draws. */
+export function screensOf(keys) {
+  const last = keys.reduce((max, k) => Math.max(max, k.pos), -1);
+  return Math.max(1, Math.floor(last / SCREEN) + 1);
+}
+
+/**
+ * One screen of a page as a dense array of `SCREEN` keys, indexed from 0.
+ *
+ * This is the editor drawing exactly what the phone draws: a page is ONE long list of keys and
+ * both sides cut it into screens. `pos` stays absolute — it is the address the phone sends back,
+ * so it can never be rewritten to a per-screen index.
+ */
+export function screenKeys(keys, screen) {
+  const base = screen * SCREEN;
+  const dense = Array.from({ length: SCREEN }, (_, i) => emptyKey(base + i));
   for (const key of keys) {
-    if (key.pos < capacity) dense[key.pos] = key;
+    if (key.pos >= base && key.pos < base + SCREEN) dense[key.pos - base] = key;
   }
   return dense;
 }
