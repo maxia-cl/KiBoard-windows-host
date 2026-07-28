@@ -4,6 +4,8 @@
 //! targets (docs/implementation-plan.md §2). Neither macOS nor Linux backends exist yet — see the
 //! cross-platform decision in that plan.
 
+pub mod apps;
+
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

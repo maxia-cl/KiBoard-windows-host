@@ -333,6 +333,41 @@ pub fn list_windows() -> Vec<crate::engine::windows::Win> {
         .collect()
 }
 
+/// The AUMID a window advertises, or "" — the same identity the taskbar groups by.
+///
+/// This is the only way to recognise a UWP app: its window is owned by `ApplicationFrameHost.exe`,
+/// so `window_process_path` reports the host for Calculator, Photos and every other packaged app
+/// alike. Desktop apps mostly leave it empty and are matched by executable instead.
+pub fn window_aumid(id: isize) -> String {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Com::StructuredStorage::PropVariantToString;
+    use windows::Win32::UI::Shell::PropertiesSystem::{
+        IPropertyStore, SHGetPropertyStoreForWindow,
+    };
+    // PKEY_AppUserModel_ID — not in the crate's generated constants, so it is spelled out.
+    const PKEY_AUMID: windows::Win32::Foundation::PROPERTYKEY =
+        windows::Win32::Foundation::PROPERTYKEY {
+            fmtid: windows::core::GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+            pid: 5,
+        };
+    unsafe {
+        let Ok(store) = SHGetPropertyStoreForWindow::<IPropertyStore>(HWND(
+            id as *mut core::ffi::c_void,
+        )) else {
+            return String::new();
+        };
+        let Ok(v) = store.GetValue(&PKEY_AUMID) else {
+            return String::new();
+        };
+        let mut buf = [0u16; 512];
+        if PropVariantToString(&v, &mut buf).is_err() {
+            return String::new();
+        }
+        let len = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+        String::from_utf16_lossy(&buf[..len])
+    }
+}
+
 /// HWND of the window in the foreground right now, or 0. Feeds the MRU and the `current` flag.
 pub fn foreground_window() -> isize {
     use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
@@ -373,6 +408,21 @@ pub fn focus_window(id: isize) {
     }
     if let Some(e) = enigo.as_mut() {
         let _ = e.key(Key::Alt, Release);
+    }
+}
+
+/// Asks a window to close, exactly as clicking its ✕ does — the app can still refuse or prompt to
+/// save. Never terminates a process.
+pub fn close_window(id: isize) {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(id as *mut core::ffi::c_void)),
+            WM_CLOSE,
+            WPARAM(0),
+            LPARAM(0),
+        );
     }
 }
 

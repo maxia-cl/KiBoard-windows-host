@@ -36,11 +36,17 @@ pub fn list_windows() -> Vec<crate::engine::windows::Win> {
     Vec::new()
 }
 
+pub fn window_aumid(_id: isize) -> String {
+    String::new()
+}
+
 pub fn foreground_window() -> isize {
     0
 }
 
 pub fn focus_window(_id: isize) {}
+
+pub fn close_window(_id: isize) {}
 
 pub fn open_target(_target: &str) -> Result<(), &'static str> {
     Err("unsupported_platform")

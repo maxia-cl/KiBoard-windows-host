@@ -88,10 +88,46 @@ pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Op
     page.keys.iter().find(|k| k.pos == flat && k.kind != KeyKind::Empty)
 }
 
+/// Fills in what a stored deck cannot hold: the app's real icon and whether it is running right
+/// now. Kept out of `keys_for` so pagination stays pure — this is the only part that touches the
+/// desktop, and it runs once per `layout` message, not once per key.
+fn decorate_apps(keys: &mut [Key]) {
+    let ids: Vec<(usize, String)> = keys
+        .iter()
+        .enumerate()
+        .filter_map(|(i, k)| {
+            let a = k.action.as_deref()?;
+            let id = ["launch:", "focus:", "kill:"]
+                .iter()
+                .find_map(|v| a.strip_prefix(v))?;
+            Some((i, id.trim().to_string()))
+        })
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    let live = crate::platform::apps::running(
+        &ids.iter().map(|(_, id)| id.clone()).collect::<Vec<_>>(),
+    );
+    for ((i, id), running) in ids.into_iter().zip(live) {
+        let key = &mut keys[i];
+        // The stored key wins: a custom image set in the editor is not overwritten by the exe's.
+        if key.image.is_none() {
+            let b64 = crate::platform::icon_cached(crate::platform::apps::exe_of(&id));
+            if !b64.is_empty() {
+                key.image = Some(format!("data:image/png;base64,{b64}"));
+            }
+        }
+        key.state = Some(json!({ "running": running }));
+    }
+}
+
 /// A `layout` message for one page of a deck (protocol/README.md §4.1).
 pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) -> String {
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
+    let mut keys = keys_for(page, grid, at_page);
+    decorate_apps(&mut keys);
     json!({
         "v": 2,
         "type": "layout",
@@ -100,7 +136,7 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
         "grid": { "rows": grid.rows, "cols": grid.cols },
         "page": at_page,
         "pages": total,
-        "keys": keys_for(page, grid, at_page),
+        "keys": keys,
     })
     .to_string()
 }

@@ -966,7 +966,59 @@ fn default_decks() -> Vec<Deck> {
     if pages.is_empty() {
         pages.push(Page { id: "p0".into(), ..Default::default() });
     }
-    vec![Deck { id: "starter".into(), name: "KiBoard".into(), icon: "deck".into(), pages }]
+    let mut decks =
+        vec![Deck { id: "starter".into(), name: "KiBoard".into(), icon: "deck".into(), pages }];
+    decks.extend(launcher_deck());
+    decks
+}
+
+/// Cap on the generated Launcher deck. High on purpose: an alphabetical cut at two pages silently
+/// hid the browser and the editor, which is exactly what a launcher is for. Paging is cheap, a
+/// missing app is not.
+const LAUNCHER_APPS: usize = 60;
+
+/// A "Launcher" deck built from the machine's own app catalogue, so manual mode has something real
+/// to do on first run. Icons and running state are attached per-send by `engine::deck`, not stored.
+///
+/// ponytail: alphabetical, minus what lives in the Windows folders — that drops `charmap`,
+/// `msconfig` and the rest of the Start menu's system tools without a curated block list. The plan
+/// says "most-used", but the only source for that is the ROT13'd UserAssist registry, whose counts
+/// are famously unreliable; ordering by real usage belongs with the editor in F5.
+fn launcher_deck() -> Option<Deck> {
+    let windir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()).to_lowercase();
+    let keys: Vec<Key> = crate::platform::apps::catalogue()
+        .iter()
+        .filter(|a| !a.exe.to_lowercase().starts_with(&windir))
+        .take(LAUNCHER_APPS)
+        .enumerate()
+        .map(|(pos, a)| Key {
+            pos,
+            label: a.name.clone(),
+            icon: "app".into(),
+            action: Some(format!("launch:{}", a.id)),
+            // Long press focuses without launching — Elgato's "Key Logic" shape (protocol §3).
+            hold: Some(format!("focus:{}", a.id)),
+            kind: KeyKind::Action,
+            ..Default::default()
+        })
+        .collect();
+    if keys.is_empty() {
+        return None; // no catalogue (non-Windows, or the enumeration failed): no empty deck
+    }
+    Some(Deck {
+        id: "launcher".into(),
+        name: "Launcher".into(),
+        icon: "apps".into(),
+        pages: keys
+            .chunks(REFERENCE_PAGE)
+            .enumerate()
+            .map(|(i, chunk)| Page {
+                id: format!("p{i}"),
+                name: String::new(),
+                keys: chunk.iter().enumerate().map(|(pos, k)| Key { pos, ..k.clone() }).collect(),
+            })
+            .collect(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1126,25 +1178,61 @@ mod tests {
     #[test]
     fn starter_deck_is_addressable_by_position() {
         let decks = default_decks();
-        let deck = decks.first().expect("a starter deck");
-        assert!(!deck.pages.is_empty());
-        for page in &deck.pages {
-            assert!(page.keys.len() <= REFERENCE_PAGE);
-            // `pos` IS the address the phone sends back in a `key` message: it must be the index,
-            // contiguous from 0, or the host resolves a press to the wrong action.
-            for (i, k) in page.keys.iter().enumerate() {
-                assert_eq!(k.pos, i, "page {} key {} has pos {}", page.id, i, k.pos);
-            }
-            // Every navigating key must name a page that exists in this deck.
-            for k in &page.keys {
-                if matches!(k.kind, KeyKind::Folder | KeyKind::Page) {
-                    let t = k.target.as_deref().expect("a navigating key needs a target");
-                    assert!(deck.page(t).is_some(), "key targets missing page {t}");
+        assert!(!decks.is_empty(), "a starter deck");
+        // Every shipped deck, the generated Launcher included, obeys the same addressing rules.
+        for deck in &decks {
+            assert!(!deck.pages.is_empty());
+            for page in &deck.pages {
+                assert!(page.keys.len() <= REFERENCE_PAGE);
+                // `pos` IS the address the phone sends back in a `key` message: it must be the
+                // index, contiguous from 0, or the host resolves a press to the wrong action.
+                for (i, k) in page.keys.iter().enumerate() {
+                    assert_eq!(k.pos, i, "page {} key {} has pos {}", page.id, i, k.pos);
                 }
-                if matches!(k.kind, KeyKind::Action) {
-                    assert!(k.action.is_some(), "an action key needs an action");
+                // Every navigating key must name a page that exists in this deck.
+                for k in &page.keys {
+                    if matches!(k.kind, KeyKind::Folder | KeyKind::Page) {
+                        let t = k.target.as_deref().expect("a navigating key needs a target");
+                        assert!(deck.page(t).is_some(), "key targets missing page {t}");
+                    }
+                    if matches!(k.kind, KeyKind::Action) {
+                        assert!(k.action.is_some(), "an action key needs an action");
+                    }
                 }
             }
+        }
+    }
+
+    /// Manual probe against the real machine: `cargo test probe_launcher -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn probe_launcher() {
+        let decks = default_decks();
+        let l = decks.iter().find(|d| d.id == "launcher").expect("a launcher deck");
+        for p in &l.pages {
+            for k in &p.keys {
+                println!("{:2} {:35} {}", k.pos, k.label, k.action.as_deref().unwrap_or(""));
+            }
+        }
+    }
+
+    /// The same deck as it LEAVES the host: does the wire message carry the real app icon and the
+    /// live running flag? `cargo test probe_launcher_layout -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn probe_launcher_layout() {
+        use crate::engine::deck::{layout_json, Grid};
+        let decks = default_decks();
+        let d = decks.iter().find(|d| d.id == "launcher").expect("a launcher deck");
+        let msg: serde_json::Value =
+            serde_json::from_str(&layout_json(d, &d.pages[0], Grid::new(3, 5), 0)).unwrap();
+        for k in msg["keys"].as_array().unwrap() {
+            println!(
+                "{:35} image {:>6} B  running={}",
+                k["label"].as_str().unwrap_or(""),
+                k["image"].as_str().map(str::len).unwrap_or(0),
+                k["state"]["running"]
+            );
         }
     }
 

@@ -126,13 +126,16 @@ pub fn run_step(step: &str) -> Result<(), &'static str> {
         }
         return platform::open_target(target);
     }
-    // The app-catalogue actions are defined by the protocol but need the AppsFolder enumeration
-    // and the AUMID/path resolution that F4 builds. Answering explicitly beats falling through to
-    // the hotkey parser, which would report "bad_key" for something that is not a hotkey at all.
-    for verb in ["launch:", "focus:", "kill:"] {
-        if step.starts_with(verb) {
-            return Err("unknown_action"); // ponytail: F4 implements these; see platform/windows/apps.rs
-        }
+    // App-catalogue actions (protocol §3). The target is an AUMID, a known-folder AppID or an
+    // absolute path — `platform::apps` is what knows how to tell them apart.
+    if let Some(id) = step.strip_prefix("launch:") {
+        return platform::apps::launch(id.trim());
+    }
+    if let Some(id) = step.strip_prefix("focus:") {
+        return platform::apps::focus(id.trim());
+    }
+    if let Some(id) = step.strip_prefix("kill:") {
+        return platform::apps::close(id.trim());
     }
     // "run:<cmd>" is opt-in from Settings and that switch does not exist yet. Until it does, an
     // arbitrary shell command from the network is exactly what must NOT be reachable.
