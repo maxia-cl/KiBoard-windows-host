@@ -18,7 +18,7 @@
  * number, and a `gridPresets` entry would mean three pull requests and a re-tag to change it.
  * Nothing breaks if they drift, the counts simply stop matching again.
  */
-export const AUTHORING_GRID = { rows: 3, cols: 5 };
+export const AUTHORING_GRID = { rows: 2, cols: 5 };
 export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols;
 
 export function emptyKey(pos) {
