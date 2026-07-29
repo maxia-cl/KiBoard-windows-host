@@ -5,14 +5,20 @@
 // host has resolved since F2. And `targetPage` is gone for the same reason: `target` already
 // names a page id.
 
-import tokens from "../../KiBoard-protocol/protocol/deck-tokens.json";
-
 /**
- * The authoring grid. Decks are written against the reference device and the host repaginates
- * them onto whatever grid each client declares in `hello`, so this is a convention for drawing,
- * never a limit on how many keys a page may hold — the same 5x3 the host means by REFERENCE_PAGE.
+ * The grid the editor draws — deliberately THE PHONE'S, not a Stream Deck preset.
+ *
+ * The editor used to author on 5x3 while the phone drew 5x2, so the same deck was fifteen keys
+ * and five screens on the desk but ten keys and seven screens in the hand. Both were "right" and
+ * the pair was confusing, which defeats the point of a WYSIWYG editor.
+ *
+ * Kept in step with `KiBoard-app/lib/ui/deck/adaptive_grid.dart`, where the phone fixes 5 keys
+ * along the long edge and 2 along the short one. ponytail: two constants in two repositories
+ * rather than a protocol round trip for two integers — `deck-tokens.json` never carried this
+ * number, and a `gridPresets` entry would mean three pull requests and a re-tag to change it.
+ * Nothing breaks if they drift, the counts simply stop matching again.
  */
-export const AUTHORING_GRID = tokens.gridPresets.mk2;
+export const AUTHORING_GRID = { rows: 3, cols: 5 };
 export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols;
 
 export function emptyKey(pos) {
