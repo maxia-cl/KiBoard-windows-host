@@ -7,7 +7,15 @@
 // resolved since F2, so the editor and the phone finally agree on what a deck is.
 
 import { emptyKey, screenKeys, screensOf, SCREEN } from "./model.js";
-import { loadDecks, saveDecks, loadAppCatalogue, loadObsScenes, testAction } from "./bridge.js";
+import {
+  loadDecks,
+  saveDecks,
+  loadAppCatalogue,
+  loadObsScenes,
+  testAction,
+  previewDecks,
+  clearPreview,
+} from "./bridge.js";
 
 let decks = $state([]);
 let catalogue = $state({ groups: [] });
@@ -145,12 +153,35 @@ export function screenCount(deckId, pageId) {
 
 const snapshot = () => $state.snapshot(decks);
 
+// Live preview (§5): every edit is shown on the connected phones before anything is saved, which
+// is the whole point of a WYSIWYG editor for a device you hold in your other hand.
+// ponytail: coalesced by a timer rather than diffed — a drag fires a dozen edits a second and the
+// phone only needs the last one. 200 ms reads as immediate and costs one push per gesture.
+const PREVIEW_DEBOUNCE_MS = 200;
+let previewTimer = null;
+
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    // A preview the host rejects is not worth reporting: the Save button is where a real problem
+    // belongs, and interrupting a drag with an error would be worse than the stale phone.
+    previewDecks(snapshot()).catch(() => {});
+  }, PREVIEW_DEBOUNCE_MS);
+}
+
+/** Puts the phones back on the saved decks — leaving manual mode, or closing the window. */
+export function stopPreview() {
+  clearTimeout(previewTimer);
+  return clearPreview().catch(() => {});
+}
+
 function withHistory(fn) {
   historyStack.push(snapshot());
   if (historyStack.length > 50) historyStack.shift();
   redoStack = [];
   fn();
   dirty = true;
+  schedulePreview();
 }
 
 export const canUndo = () => historyStack.length > 0;
@@ -161,16 +192,20 @@ export function undo() {
   redoStack.push(snapshot());
   decks = historyStack.pop();
   dirty = true;
+  schedulePreview();
 }
 export function redo() {
   if (!redoStack.length) return;
   historyStack.push(snapshot());
   decks = redoStack.pop();
   dirty = true;
+  schedulePreview();
 }
 
 /** Writes to `config.json` and re-sends the layout to every phone in manual mode. */
 export async function save() {
+  // A preview still in flight would land AFTER the save and put the phones back on unsaved decks.
+  clearTimeout(previewTimer);
   const result = await saveDecks(snapshot());
   if (!result.ok) {
     saveError = result.error;
@@ -253,6 +288,33 @@ export function dropCatalogueItem(deckId, pageId, pos, item) {
     }
   });
   showToast(existing.kind === "empty" ? `Assigned to key ${pos + 1}` : `Replaced key ${pos + 1}`);
+}
+
+/**
+ * The keyboard path (§5): assigns a catalogue item without a mouse. Enter on an item drops it on
+ * the selected key, or on the first free slot of the screen on show when nothing is selected —
+ * dragging is the fast way, not the only way.
+ */
+export function assignToSelection(item) {
+  const { deckId, pageId, screen, pos } = selection;
+  if (!deckId || !pageId) return;
+  let target = pos;
+  if (target == null) {
+    const taken = new Set(resolveScope(deckId, pageId)?.keys.map((k) => k.pos) ?? []);
+    const base = screen * SCREEN;
+    for (let i = base; i < base + SCREEN; i++) {
+      if (!taken.has(i)) {
+        target = i;
+        break;
+      }
+    }
+  }
+  if (target == null) {
+    showToast("This screen is full — select a key to replace");
+    return;
+  }
+  dropCatalogueItem(deckId, pageId, target, item);
+  select(target);
 }
 
 export function moveKey(deckId, from, to) {

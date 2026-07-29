@@ -18,6 +18,7 @@
     screenCount,
     moveKey,
     swapKeys,
+    emptyKeyAt,
   } from "./store.svelte.js";
   import { getDrag, startKeyDrag, onDragMove, endDrag } from "./dnd.svelte.js";
   import { AUTHORING_GRID, SCREEN } from "./model.js";
@@ -69,6 +70,21 @@
 
   function handleKeydown(e) {
     if (selection.pos == null || !deck) return;
+    const selected = keys[selection.pos - selection.screen * SCREEN];
+
+    // The rest of the keyboard path: clear and test, so a key can be managed without a mouse.
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      emptyKeyAt(deckId, selection.pageId, selection.pos);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (selected?.kind === "folder" && selected.target) enterPage(selected.target);
+      else testKey(selected);
+      return;
+    }
+
     const { cols } = grid;
     let delta = null;
     if (e.key === "ArrowLeft") delta = -1;

@@ -27,6 +27,16 @@ export async function saveDecks(decks) {
   return await invoke("save_decks", { decks });
 }
 
+/** Shows UNSAVED decks on every phone in manual mode. Validated host-side, same as a save. */
+export async function previewDecks(decks) {
+  return await invoke("preview_decks", { decks });
+}
+
+/** Drops the preview: the phones go back to what is on disk. */
+export async function clearPreview() {
+  return await invoke("clear_preview");
+}
+
 /** The machine's installed apps (F4), each with its real icon already as a `data:` URI. */
 export async function loadAppCatalogue() {
   return await invoke("app_catalogue");

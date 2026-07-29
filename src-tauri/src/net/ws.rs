@@ -178,15 +178,54 @@ pub(crate) struct Session {
     pub(crate) dragging: bool,
 }
 
+/// Decks the editor is showing but has NOT saved (F5 live preview). While this is set it stands in
+/// for `config.decks` everywhere a phone is concerned.
+static PREVIEW: OnceLock<Mutex<Option<Vec<crate::config::Deck>>>> = OnceLock::new();
+fn preview() -> &'static Mutex<Option<Vec<crate::config::Deck>>> {
+    PREVIEW.get_or_init(|| Mutex::new(None))
+}
+
+/// Shows unsaved decks on every phone in manual mode. The editor calls this as you drag, so the
+/// device on the desk and the one in your hand agree before anything is written to disk.
+pub fn set_preview(decks: Vec<crate::config::Deck>) {
+    *preview().lock().unwrap() = Some(decks);
+    push_manual_layouts();
+}
+
+/// Back to what is on disk — the editor saved, closed, or left manual mode. Without this a phone
+/// keeps showing a deck that was never saved and no longer exists anywhere.
+pub fn clear_preview() {
+    let had = preview().lock().unwrap().take().is_some();
+    if had {
+        push_manual_layouts();
+    }
+}
+
+/// Runs `f` against the decks a phone should currently see: the editor's unsaved preview when
+/// there is one, otherwise the saved config.
+///
+/// EVERY phone-facing read goes through here, rendering and press resolution alike. If the two
+/// disagreed, §4.2's guarantee would break: the phone would be shown one layout and its press
+/// resolved against another, which is exactly the class of bug positional keys exist to prevent.
+fn with_decks<T>(f: impl FnOnce(&[crate::config::Deck]) -> T) -> T {
+    let preview = preview().lock().unwrap();
+    match preview.as_ref() {
+        Some(decks) => f(decks),
+        None => f(&config().lock().unwrap().decks),
+    }
+}
+
 /// Builds the `layout` for whatever deck/page this session is on, snapping the session onto the
 /// first deck/page when it is pointing at something that no longer exists (deck deleted mid-use).
 fn manual_layout(s: &mut Session) -> Option<String> {
-    let cfg = config().lock().unwrap();
-    let deck = cfg.decks.iter().find(|d| d.id == s.deck_id).or_else(|| cfg.decks.first())?;
-    let page = deck.page(&s.page_id).or_else(|| deck.pages.first())?;
-    s.deck_id = deck.id.clone();
-    s.page_id = page.id.clone();
-    Some(deck::layout_json(deck, page, s.grid, s.page))
+    let (deck_id, page_id, json) = with_decks(|decks| {
+        let deck = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())?;
+        let page = deck.page(&s.page_id).or_else(|| deck.pages.first())?;
+        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page)))
+    })?;
+    s.deck_id = deck_id;
+    s.page_id = page_id;
+    Some(json)
 }
 
 /// What a press at (page, pos) means. Resolved against the host's OWN config — §4.2: the phone
@@ -209,12 +248,12 @@ fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Pre
         let key = deck::resolve(&pg, s.grid, page, pos).ok_or("no_such_key")?;
         return key.action_for(kind).map(|a| Press::Run(a.to_string())).ok_or("no_such_key");
     }
-    let cfg = config().lock().unwrap();
-    let deck = cfg
-        .decks
+    // Resolved against the SAME decks the phone was shown — preview included, see `with_decks`.
+    with_decks(|decks| {
+    let deck = decks
         .iter()
         .find(|d| d.id == s.deck_id)
-        .or_else(|| cfg.decks.first())
+        .or_else(|| decks.first())
         .ok_or("no_such_key")?;
     let pg = deck.page(&s.page_id).or_else(|| deck.pages.first()).ok_or("no_such_key")?;
     let key = deck::resolve(pg, s.grid, page, pos).ok_or("no_such_key")?;
@@ -230,6 +269,7 @@ fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Pre
         KeyKind::Action => key.action_for(kind).map(|a| Press::Run(a.to_string())).ok_or("no_such_key"),
         KeyKind::Empty => Err("no_such_key"),
     }
+    })
 }
 
 /// Continuous input (§4.2 exception): trackpad, volume slider, dictation. These are NOT keys and
@@ -495,5 +535,62 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             json!({"v":2,"type":"command_result","ok":true}).to_string()
         }
         _ => json!({"v":2,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Deck, Key, KeyKind, Page};
+
+    fn deck_saying(label: &str) -> Vec<Deck> {
+        vec![Deck {
+            id: "d".into(),
+            name: "D".into(),
+            pages: vec![Page {
+                id: "p0".into(),
+                keys: vec![Key {
+                    pos: 0,
+                    label: label.into(),
+                    action: Some(format!("type:{label}")),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]
+    }
+
+    fn session() -> Session {
+        Session { authed: true, manual: true, deck_id: "d".into(), page_id: "p0".into(), ..Default::default() }
+    }
+
+    /// The preview must own BOTH halves. If it only replaced what is drawn, the phone would show
+    /// the unsaved deck while a press resolved against the saved one — the phone pressing position
+    /// 0 and the desktop running somebody else's action. That is precisely what §4.2's positional
+    /// keys exist to make impossible, so it is worth a test rather than a comment.
+    #[test]
+    fn a_preview_owns_both_the_layout_and_the_press() {
+        clear_preview();
+        set_preview(deck_saying("PREVIEW"));
+
+        let mut s = session();
+        let layout = manual_layout(&mut s).expect("a layout");
+        assert!(layout.contains("PREVIEW"), "the preview is what gets drawn");
+
+        match resolve_press(&s, 0, 0, "short") {
+            Ok(Press::Run(action)) => assert_eq!(action, "type:PREVIEW", "and what gets run"),
+            other => panic!("expected the preview's action, got {:?}", other.is_ok()),
+        }
+
+        // Dropping it falls back to the saved config, whatever that happens to be.
+        clear_preview();
+        let mut s2 = session();
+        let after = manual_layout(&mut s2);
+        assert!(
+            after.map(|l| !l.contains("PREVIEW")).unwrap_or(true),
+            "the preview must not survive being cleared"
+        );
     }
 }

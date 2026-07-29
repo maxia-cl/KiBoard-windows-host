@@ -1,5 +1,5 @@
 <script>
-  import { getCatalogue } from "./store.svelte.js";
+  import { getCatalogue, assignToSelection } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
   import { startCatalogueDrag, onDragMove, endDrag } from "./dnd.svelte.js";
 
@@ -41,8 +41,13 @@
           tabindex="0"
           onpointerdown={(e) => handlePointerDown(e, item)}
           onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") e.preventDefault();
+            // The keyboard path: Enter assigns to the selected key, no dragging involved.
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              assignToSelection(item);
+            }
           }}
+          title="Enter assigns this to the selected key"
         >
           <span class="glyph">
             {#if item.image}

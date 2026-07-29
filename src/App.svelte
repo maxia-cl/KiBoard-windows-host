@@ -19,9 +19,17 @@
     getDecks,
     getSelection,
     selectDeck,
+    stopPreview,
   } from "./lib/store.svelte.js";
 
   let mode = $state("manual"); // "auto" | "manual" — docs/implementation-plan.md §3.2
+
+  // Leaving manual mode or closing the window puts every phone back on the SAVED decks. Without
+  // this, a phone keeps showing an unsaved preview of a deck that exists nowhere.
+  function leaveManual() {
+    mode = "auto";
+    stopPreview();
+  }
   let showPairing = $state(false);
   let clients = $state(0);
   let loadError = $state(null);
@@ -58,9 +66,12 @@
       }
     }
     window.addEventListener("keydown", onKeydown);
+    window.addEventListener("beforeunload", stopPreview);
     return () => {
       window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("beforeunload", stopPreview);
       clearInterval(poll);
+      stopPreview();
     };
   });
 </script>
@@ -69,7 +80,7 @@
   <header>
     <span class="brand">KiBoard</span>
     <div class="tabs">
-      <button class:active={mode === "auto"} onclick={() => (mode = "auto")}>Auto</button>
+      <button class:active={mode === "auto"} onclick={leaveManual}>Auto</button>
       <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>Manual</button>
     </div>
     {#if mode === "manual" && decks.length > 1}

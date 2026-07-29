@@ -195,8 +195,32 @@ fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
         cfg.decks = decks;
         cfg.save();
     }
+    // Disk is the truth again, so the preview has nothing left to stand in for. Clearing it also
+    // re-pushes, which is what puts the saved deck on every phone.
+    net::ws::clear_preview();
     net::ws::push_manual_layouts();
     json!({ "ok": true })
+}
+
+/// Live preview (§5, F5): shows UNSAVED decks on every phone in manual mode, so a key can be
+/// dragged and felt on the real device before anything is written.
+///
+/// Validated exactly like a save. A preview that the phone cannot resolve is not a preview, it is
+/// a broken deck in someone's hand — and unlike a save, nobody would be looking at the error.
+#[tauri::command]
+fn preview_decks(decks: Vec<config::Deck>) -> serde_json::Value {
+    if let Err(e) = engine::deck::validate(&decks) {
+        return json!({ "ok": false, "error": e });
+    }
+    net::ws::set_preview(decks);
+    json!({ "ok": true })
+}
+
+/// Drops the preview and puts the saved decks back. The editor calls this when it closes, when it
+/// leaves manual mode, and when changes are discarded.
+#[tauri::command]
+fn clear_preview() {
+    net::ws::clear_preview();
 }
 
 /// The machine's app catalogue (F4) with its real icons, for the editor's Apps group.
@@ -327,6 +351,8 @@ pub fn run() {
             get_decks,
             save_decks,
             app_catalogue,
+            preview_decks,
+            clear_preview,
             obs_scenes,
             profile_qr,
             obs_info,
