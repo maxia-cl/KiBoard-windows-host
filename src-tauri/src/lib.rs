@@ -326,6 +326,11 @@ fn pairing_status() -> serde_json::Value {
     json!({
         "hostId": cfg.host_id,
         "pairingOpen": cfg.pairing_open,
+        // R1: the phone can always be pointed at an address by hand, for the networks that never
+        // pass mDNS on. That only helps if the PC says what to type, so it is shown next to the
+        // code rather than left for the user to go and find in Windows' settings.
+        "ip": net::pairing::best_lan_ip(),
+        "port": net::ws::WS_PORT,
         "pending": pending.map(|(device, code, expires_in)| json!({
             "device": device, "code": code, "expiresIn": expires_in
         })),

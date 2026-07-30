@@ -65,6 +65,17 @@
         <input type="checkbox" checked={status.pairingOpen} onchange={toggleOpen} />
       </label>
 
+      <!--
+        R1's escape hatch, from this side. A network that drops multicast leaves the phone with an
+        empty list, and its only way in is being told where to look — so the address sits here, next
+        to the code, instead of somewhere the user has to be told how to find.
+      -->
+      <div class="row">
+        <span class="label">Address</span>
+        <code>{status.ip}:{status.port}</code>
+      </div>
+      <p class="hint">Type this on the phone if it cannot find this PC by itself.</p>
+
       {#if status.pending}
         <div class="pending">
           <div class="code">{status.pending.code}</div>
