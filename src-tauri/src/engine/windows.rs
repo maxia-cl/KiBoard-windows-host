@@ -87,10 +87,26 @@ pub fn windows_json(grid: Grid, page: usize) -> String {
         .take(size)
         .enumerate()
         .map(|(pos, w)| {
-            let label = std::path::Path::new(&w.exe)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| w.title.clone());
+            // A packaged (UWP) window is owned by ApplicationFrameHost.exe, so naming it after its
+            // executable labels Notepad, Photos and Settings alike — all "ApplicationFrameHost",
+            // all with the same generic icon. The AUMID it advertises is its real identity (the
+            // one the taskbar groups by), and F4's catalogue turns that into the name and tile the
+            // Start menu shows. Desktop apps advertise no AUMID and keep the executable's name.
+            // Resolved ONCE per window: this is a COM call, and the catalogue has ~80 entries.
+            let aumid = platform::window_aumid(w.id);
+            let packaged = (!aumid.is_empty())
+                .then(|| {
+                    crate::platform::apps::catalogue()
+                        .iter()
+                        .find(|a| a.id.eq_ignore_ascii_case(&aumid))
+                })
+                .flatten();
+            let label = packaged.map(|a| a.name.clone()).unwrap_or_else(|| {
+                std::path::Path::new(&w.exe)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| w.title.clone())
+            });
             let mut state = json!({});
             if w.id == current {
                 state["current"] = json!(true);
@@ -98,9 +114,20 @@ pub fn windows_json(grid: Grid, page: usize) -> String {
             if w.minimized {
                 state["minimized"] = json!(true);
             }
+            // A `data:` URI, not bare base64. The phone decodes `image` the same way for every
+            // key it draws, and that decoder requires the prefix — without it the switcher's
+            // icons silently came out blank. Absent rather than empty when there is no icon: an
+            // empty data URI decodes to zero bytes and draws a broken image, not nothing.
+            // Same story for the icon: a packaged app has no executable to pull one from, so it
+            // comes from the shell tile F4 already knows how to fetch.
+            let icon = match packaged {
+                Some(a) => crate::platform::apps::icon(&a.id),
+                None => platform::icon_cached(&w.exe),
+            };
             json!({
                 "pos": pos, "id": w.id, "label": label, "sub": w.title,
-                "image": platform::icon_cached(&w.exe), "state": state,
+                "image": (!icon.is_empty()).then(|| format!("data:image/png;base64,{icon}")),
+                "state": state,
             })
         })
         .collect();

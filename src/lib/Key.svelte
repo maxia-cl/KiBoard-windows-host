@@ -4,8 +4,7 @@
   let {
     keyData,
     pos,
-    pageIndex = null,
-    folderId = null,
+    pageId = null,
     selected = false,
     isDropTarget = false,
     replaceBlink = false,
@@ -25,8 +24,7 @@
   class:replace-blink={replaceBlink}
   style:background-color={keyData.color ?? null}
   data-drop-key
-  data-page-index={pageIndex ?? ""}
-  data-folder-id={folderId ?? ""}
+  data-page-id={pageId ?? ""}
   data-pos={pos}
   onpointerdown={(e) => onpointerdown(e)}
   onclick={() => onselect()}

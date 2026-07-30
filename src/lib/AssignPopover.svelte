@@ -2,10 +2,11 @@
   import { getCatalogue, dropCatalogueItem } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
 
-  let { deckId, pageIndex, folderId, pos, onclose } = $props();
+  let { deckId, pageId, pos, onclose } = $props();
 
   let query = $state("");
-  const catalogue = getCatalogue();
+  // Reactive, not a snapshot: the catalogue arrives from the host after mount.
+  let catalogue = $derived(getCatalogue());
   let filteredGroups = $derived(
     catalogue.groups
       .map((g) => ({ ...g, items: g.items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())) }))
@@ -13,7 +14,7 @@
   );
 
   function assign(item) {
-    dropCatalogueItem(deckId, pageIndex, folderId, pos, item);
+    dropCatalogueItem(deckId, pageId, pos, item);
     onclose();
   }
 

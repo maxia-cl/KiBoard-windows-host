@@ -1,12 +1,13 @@
 <script>
-  import { getCatalogue } from "./store.svelte.js";
+  import { getCatalogue, assignToSelection } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
   import { startCatalogueDrag, onDragMove, endDrag } from "./dnd.svelte.js";
 
   let { deckId } = $props();
 
   let query = $state("");
-  const catalogue = getCatalogue();
+  // Reactive, not a snapshot: the catalogue arrives from the host after mount.
+  let catalogue = $derived(getCatalogue());
   let filteredGroups = $derived(
     catalogue.groups
       .map((g) => ({ ...g, items: g.items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())) }))
@@ -40,8 +41,13 @@
           tabindex="0"
           onpointerdown={(e) => handlePointerDown(e, item)}
           onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") e.preventDefault();
+            // The keyboard path: Enter assigns to the selected key, no dragging involved.
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              assignToSelection(item);
+            }
           }}
+          title="Enter assigns this to the selected key"
         >
           <span class="glyph">
             {#if item.image}

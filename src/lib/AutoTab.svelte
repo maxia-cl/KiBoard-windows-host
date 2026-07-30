@@ -3,7 +3,7 @@
   // Real per-app profiles are ported from v1 in F2 (docs/implementation-plan.md §3.2).
   import layoutPhotoshop from "../../KiBoard-protocol/protocol/fixtures/layout-auto-photoshop.json";
   import Key from "./Key.svelte";
-  import { gridFor } from "./model.js";
+  import { AUTHORING_GRID } from "./model.js";
 
   const PROFILES = [
     "Adobe Photoshop", "Adobe Illustrator", "Microsoft Excel", "Google Chrome",
@@ -13,7 +13,7 @@
   let query = $state("");
   let selectedId = $state("0");
   let filtered = $derived(PROFILES.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())));
-  let grid = $derived(gridFor("mk2"));
+  let grid = AUTHORING_GRID;
 </script>
 
 <div class="auto-tab">

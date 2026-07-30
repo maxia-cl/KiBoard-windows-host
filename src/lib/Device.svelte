@@ -1,69 +1,57 @@
 <script>
   import Key from "./Key.svelte";
-  import ModelSelector from "./ModelSelector.svelte";
   import AssignPopover from "./AssignPopover.svelte";
   import {
     getDecks,
     getSelection,
-    selectPage,
-    enterFolder,
-    exitFolder,
+    selectScreen,
+    enterPage,
+    exitPage,
+    isEntryPage,
     select,
-    addPage,
-    duplicatePage,
-    setModel,
     testKey,
     canUndo,
     canRedo,
     undo,
     redo,
-    resolveScope,
+    currentScreen,
+    screenCount,
     moveKey,
     swapKeys,
+    emptyKeyAt,
   } from "./store.svelte.js";
   import { getDrag, startKeyDrag, onDragMove, endDrag } from "./dnd.svelte.js";
-  import { gridFor } from "./model.js";
+  import { AUTHORING_GRID, SCREEN } from "./model.js";
 
   let { deckId } = $props();
 
   let decks = $derived(getDecks());
   let deck = $derived(decks.find((d) => d.id === deckId));
   let selection = $derived(getSelection());
-  let grid = $derived(gridFor(deck?.model));
-  let scope = $derived(deck ? resolveScope(deckId, selection.pageIndex, selection.folderId) : null);
-  let inFolder = $derived(!!selection.folderId);
+  let grid = AUTHORING_GRID;
+  // The dense screen being drawn. `pos` on these keys is ABSOLUTE within the page, which is what
+  // every edit and every drop location uses — the phone addresses keys the same way.
+  let keys = $derived(deck ? currentScreen(deckId, selection.pageId, selection.screen) : []);
+  let screens = $derived(deck ? screenCount(deckId, selection.pageId) : 1);
+  let page = $derived(deck?.pages.find((p) => p.id === selection.pageId));
   let drag = $derived(getDrag());
   let assignTarget = $state(null); // pos awaiting catalogue assignment via double-click
 
-  function scopeFolderId() {
-    return inFolder ? selection.folderId : null;
-  }
-  function scopePageIndex() {
-    return inFolder ? null : selection.pageIndex;
-  }
-
   function dropTargetFor(pos) {
     if (!drag?.target || drag.target.type !== "key") return false;
-    return (
-      drag.target.pos === pos &&
-      drag.target.pageIndex === scopePageIndex() &&
-      drag.target.folderId === scopeFolderId()
-    );
+    return drag.target.pos === pos && drag.target.pageId === selection.pageId;
   }
-  function replaceBlinkFor(pos) {
-    if (!dropTargetFor(pos)) return false;
-    const key = scope.keys[pos];
-    return key.kind !== "empty" && key.kind !== "folder";
+  function replaceBlinkFor(pos, key) {
+    return dropTargetFor(pos) && key.kind !== "empty" && key.kind !== "folder";
   }
 
-  function handlePointerDown(e, pos) {
-    const key = scope.keys[pos];
+  function handlePointerDown(e, key) {
     if (key.kind === "empty") {
-      select(pos);
+      select(key.pos);
       return;
     }
     e.preventDefault();
-    startKeyDrag(deckId, scopePageIndex(), scopeFolderId(), pos, key, e.clientX, e.clientY);
+    startKeyDrag(deckId, selection.pageId, key.pos, key, e.clientX, e.clientY);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
   }
@@ -75,18 +63,29 @@
     window.removeEventListener("pointermove", onMove);
   }
 
-  function handleDblClick(pos) {
-    const key = scope.keys[pos];
-    if (key.kind === "folder") {
-      enterFolder(key.folderId);
-    } else {
-      assignTarget = pos;
-    }
+  function handleDblClick(key) {
+    if (key.kind === "folder" && key.target) enterPage(key.target);
+    else assignTarget = key.pos;
   }
 
   function handleKeydown(e) {
-    if (selection.pos == null || !scope) return;
-    const { rows, cols } = grid;
+    if (selection.pos == null || !deck) return;
+    const selected = keys[selection.pos - selection.screen * SCREEN];
+
+    // The rest of the keyboard path: clear and test, so a key can be managed without a mouse.
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      emptyKeyAt(deckId, selection.pageId, selection.pos);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (selected?.kind === "folder" && selected.target) enterPage(selected.target);
+      else testKey(selected);
+      return;
+    }
+
+    const { cols } = grid;
     let delta = null;
     if (e.key === "ArrowLeft") delta = -1;
     else if (e.key === "ArrowRight") delta = 1;
@@ -96,15 +95,18 @@
 
     const pos = selection.pos;
     const target = pos + delta;
-    if (target < 0 || target >= rows * cols) return;
+    // Arrows move WITHIN the screen on show: crossing into the next one silently would look like
+    // the key vanished.
+    const base = selection.screen * SCREEN;
+    if (target < base || target >= base + SCREEN) return;
     if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && Math.floor(target / cols) !== Math.floor(pos / cols)) return;
     e.preventDefault();
 
-    const loc = { pageIndex: scopePageIndex(), folderId: scopeFolderId(), pos };
-    const to = { ...loc, pos: target };
-    const targetKey = scope.keys[target];
-    if (targetKey.kind === "empty") moveKey(deckId, loc, to);
-    else swapKeys(deckId, loc, to);
+    const from = { pageId: selection.pageId, pos };
+    const to = { pageId: selection.pageId, pos: target };
+    const targetKey = keys[target - base];
+    if (targetKey.kind === "empty") moveKey(deckId, from, to);
+    else swapKeys(deckId, from, to);
     select(target);
   }
 </script>
@@ -113,48 +115,48 @@
   <div class="stage">
     <div class="toolbar">
       <span class="deck-name">Deck: {deck.name}</span>
-      <ModelSelector value={deck.model} onchange={(preset) => setModel(deckId, preset)} />
-      {#if !inFolder}
-        <span class="page-count">{selection.pageIndex + 1}/{deck.pages.length}</span>
-      {/if}
+      <span class="page-count">
+        {#if screens > 1}screen {selection.screen + 1}/{screens}{/if}
+      </span>
     </div>
 
-    {#if inFolder}
+    {#if !isEntryPage()}
       <div class="folder-header">
-        <button onclick={() => exitFolder()}>← Back</button>
-        <span>{deck.folders[selection.folderId]?.name}</span>
+        <button onclick={() => exitPage()}>← Back</button>
+        <span>{page?.name || "Page"}</span>
       </div>
     {/if}
 
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="bezel" data-drop-bezel onkeydown={handleKeydown} role="group" tabindex="-1">
       <div class="grid" style={`grid-template-columns: repeat(${grid.cols}, var(--deck-key-size))`}>
-        {#each scope.keys as key, pos (pos)}
+        {#each keys as key (key.pos)}
           <Key
             keyData={key}
-            {pos}
-            pageIndex={scopePageIndex()}
-            folderId={scopeFolderId()}
-            selected={selection.pos === pos}
-            isDropTarget={dropTargetFor(pos)}
-            replaceBlink={replaceBlinkFor(pos)}
-            onpointerdown={(e) => handlePointerDown(e, pos)}
-            onselect={() => select(pos)}
-            ondblclick={() => handleDblClick(pos)}
+            pos={key.pos}
+            pageId={selection.pageId}
+            selected={selection.pos === key.pos}
+            isDropTarget={dropTargetFor(key.pos)}
+            replaceBlink={replaceBlinkFor(key.pos, key)}
+            onpointerdown={(e) => handlePointerDown(e, key)}
+            onselect={() => select(key.pos)}
+            ondblclick={() => handleDblClick(key)}
           />
         {/each}
       </div>
 
-      {#if !inFolder && deck.pages.length > 1}
+      <!-- The same dots the phone draws, meaning the same thing: this page cut into screens.
+           A page grows a screen by having a key placed past the current last one. -->
+      {#if screens > 1}
         <div class="dots">
-          {#each deck.pages as _, i}
+          {#each Array(screens) as _, i}
             <button
               class="dot"
-              class:active={i === selection.pageIndex}
-              data-drop-page-dot
-              data-page-index={i}
-              onclick={() => selectPage(i)}
-              aria-label={`Page ${i + 1}`}
+              class:active={i === selection.screen}
+              data-drop-screen-dot
+              data-screen={i}
+              onclick={() => selectScreen(i)}
+              aria-label={`Screen ${i + 1}`}
             ></button>
           {/each}
         </div>
@@ -163,21 +165,16 @@
       <div class="logo">KiBoard</div>
     </div>
 
-    {#if !inFolder}
-      <div class="page-controls">
-        <button onclick={() => addPage(deckId)}>+ page</button>
-        <button onclick={() => duplicatePage(deckId, selection.pageIndex)}>duplicate</button>
-        <button disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
-        <button disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
-      </div>
-    {/if}
+    <div class="page-controls">
+      <button disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
+      <button disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
+    </div>
   </div>
 
   {#if assignTarget !== null}
     <AssignPopover
       {deckId}
-      pageIndex={scopePageIndex()}
-      folderId={scopeFolderId()}
+      pageId={selection.pageId}
       pos={assignTarget}
       onclose={() => (assignTarget = null)}
     />

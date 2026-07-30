@@ -902,7 +902,7 @@ const REFERENCE_PAGE: usize = 15;
 /// empty grid looks broken. This seeds one starter deck from the generic profile's recommended
 /// buttons, spread over two pages, plus the v2-only keys (window switcher, mode switch) that had
 /// no equivalent in v1. F4 replaces it with a deck built from the machine's most-used apps.
-fn default_decks() -> Vec<Deck> {
+pub(crate) fn default_decks() -> Vec<Deck> {
     let generic = default_profiles().into_iter().find(|p| p.id == "generic");
     let mut keys: Vec<Key> = generic
         .map(|p| p.buttons)

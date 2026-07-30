@@ -88,6 +88,67 @@ pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Op
     page.keys.iter().find(|k| k.pos == flat && k.kind != KeyKind::Empty)
 }
 
+/// Rejects decks the phone could not render or resolve. The editor is not the only writer —
+/// `config.json` is a file a user can edit by hand — but it IS the one that can be told why.
+///
+/// Only structural rules live here, the ones that would make a press resolve to nothing:
+/// action strings are NOT validated, because `run_step` already answers `unknown_action` per press
+/// and a deck full of typos is still a deck the user can open and fix.
+pub(crate) fn validate(decks: &[Deck]) -> Result<(), String> {
+    let mut seen: Vec<&str> = Vec::new();
+    for deck in decks {
+        if deck.id.is_empty() {
+            return Err("a deck has no id".into());
+        }
+        if seen.contains(&deck.id.as_str()) {
+            return Err(format!("two decks share the id \"{}\"", deck.id));
+        }
+        seen.push(&deck.id);
+        if deck.pages.is_empty() {
+            return Err(format!("deck \"{}\" has no pages", deck.id));
+        }
+        let mut pages: Vec<&str> = Vec::new();
+        for page in &deck.pages {
+            if page.id.is_empty() {
+                return Err(format!("a page of deck \"{}\" has no id", deck.id));
+            }
+            if pages.contains(&page.id.as_str()) {
+                return Err(format!("deck \"{}\" repeats the page id \"{}\"", deck.id, page.id));
+            }
+            pages.push(&page.id);
+        }
+        for page in &deck.pages {
+            let mut at: Vec<usize> = Vec::new();
+            for key in &page.keys {
+                // `pos` IS the address the phone sends back: two keys on one position means a
+                // press resolves to whichever the host happens to find first.
+                if at.contains(&key.pos) {
+                    return Err(format!("two keys share position {} on page \"{}\"", key.pos, page.id));
+                }
+                at.push(key.pos);
+                match key.kind {
+                    KeyKind::Folder | KeyKind::Page => {
+                        let target = key.target.as_deref().unwrap_or("");
+                        if !deck.pages.iter().any(|p| p.id == target) {
+                            return Err(format!(
+                                "key \"{}\" points at a page that does not exist (\"{target}\")",
+                                key.label
+                            ));
+                        }
+                    }
+                    KeyKind::Action => {
+                        if key.action.as_deref().unwrap_or("").is_empty() {
+                            return Err(format!("key \"{}\" has no action", key.label));
+                        }
+                    }
+                    KeyKind::Empty => {}
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Fills in what a stored deck cannot hold: the app's real icon and whether it is running right
 /// now. Kept out of `keys_for` so pagination stays pure — this is the only part that touches the
 /// desktop, and it runs once per `layout` message, not once per key.
@@ -243,6 +304,68 @@ mod tests {
         assert_eq!(keys[3].label, "d");
         assert_eq!(resolve(&p, g, 0, 3).unwrap().action.as_deref(), Some("d"));
         assert!(resolve(&p, g, 0, 1).is_none());
+    }
+
+    /// The editor receives a deck as JSON, edits it and hands it straight back to `save_decks`.
+    /// Every `skip_serializing_if` on `Key` is therefore a chance to drop a field on the way out
+    /// and fail to read it on the way back in — silently, and into the file the user's decks live
+    /// in. A round trip through serde is the cheapest guard against that.
+    #[test]
+    fn a_deck_survives_the_editors_round_trip() {
+        let decks = crate::config::default_decks();
+        let json = serde_json::to_string(&decks).expect("decks serialize");
+        let back: Vec<Deck> = serde_json::from_str(&json).expect("and deserialize");
+        assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            json,
+            "a field was lost on the way through the editor"
+        );
+        // Whatever came back has to still be saveable, or the editor could not save what it read.
+        assert!(validate(&back).is_ok());
+        // The fields that carry meaning are actually there, not merely equal-to-empty on both sides.
+        let launcher = back.iter().find(|d| d.id == "launcher");
+        if let Some(l) = launcher {
+            let key = l.pages[0].keys.iter().find(|k| k.pos == 1).expect("an app key");
+            assert!(key.action.as_deref().unwrap_or("").starts_with("launch:"));
+            assert!(key.hold.as_deref().unwrap_or("").starts_with("focus:"));
+        }
+    }
+
+    /// Every rule `validate` enforces is one the phone would otherwise hit as "nothing happens".
+    #[test]
+    fn validate_rejects_what_the_phone_could_not_resolve() {
+        let key = |pos: usize, kind: KeyKind| Key { pos, kind, ..Default::default() };
+        let act = |pos: usize| Key {
+            pos,
+            action: Some("ctrl+c".into()),
+            kind: KeyKind::Action,
+            ..Default::default()
+        };
+        let deck = |pages: Vec<Page>| Deck { id: "d".into(), pages, ..Default::default() };
+        let page = |id: &str, keys: Vec<Key>| Page { id: id.into(), keys, ..Default::default() };
+
+        assert!(validate(&[deck(vec![page("p0", vec![act(0), act(1)])])]).is_ok());
+        assert!(validate(&[]).is_ok(), "no decks at all is not an error");
+
+        // Two keys on one position: a press resolves to whichever is found first.
+        assert!(validate(&[deck(vec![page("p0", vec![act(0), act(0)])])]).is_err());
+        // A navigating key with no destination, or one that names a page that is not there.
+        assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Folder)])])]).is_err());
+        let dangling = Key {
+            pos: 0,
+            target: Some("gone".into()),
+            kind: KeyKind::Page,
+            ..Default::default()
+        };
+        assert!(validate(&[deck(vec![page("p0", vec![dangling])])]).is_err());
+        // An action key with nothing to run.
+        assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Action)])])]).is_err());
+        // Structural: no pages, repeated page id, repeated deck id.
+        assert!(validate(&[deck(vec![])]).is_err());
+        assert!(validate(&[deck(vec![page("p0", vec![]), page("p0", vec![])])]).is_err());
+        assert!(validate(&[deck(vec![page("p0", vec![])]), deck(vec![page("p0", vec![])])]).is_err());
+        // An empty key carries neither action nor target, and that is exactly what it is for.
+        assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Empty)])])]).is_ok());
     }
 
     // A client cannot make the host allocate an absurd layout by lying in `hello`.
