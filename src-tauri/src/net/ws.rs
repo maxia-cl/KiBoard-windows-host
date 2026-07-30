@@ -275,8 +275,17 @@ fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Pre
         KeyKind::Action if kind == "short" && key.toggle.is_some() => {
             let at = deck::flat(s.grid, page, pos).ok_or("no_such_key")?;
             let at = deck::addr(&deck.id, &pg.id, at);
-            let action = deck::showing_action(key, deck::is_on(&at)).ok_or("no_such_key")?;
-            Ok(Press::Toggle(action.to_string(), at))
+            // Reality wins over memory where reality is knowable.
+            let live = deck::live_face(key);
+            let on = live.unwrap_or_else(|| deck::is_on(&at));
+            let action = deck::showing_action(key, on).ok_or("no_such_key")?;
+            match live {
+                // OBS owns this key's state: run the action and let the 500 ms poll repaint when
+                // OBS says so. Remembering a flip here would put our memory against the truth —
+                // and the truth can change without anyone pressing anything.
+                Some(_) => Ok(Press::Run(action.to_string())),
+                None => Ok(Press::Toggle(action.to_string(), at)),
+            }
         }
         KeyKind::Action => key.action_for(kind).map(|a| Press::Run(a.to_string())).ok_or("no_such_key"),
         KeyKind::Empty => Err("no_such_key"),

@@ -43,6 +43,40 @@ pub(crate) fn flip(addr: &str) -> bool {
     }
 }
 
+/// The truth about a key whose state KiBoard does not own: OBS decides whether it is recording,
+/// and a scene is on air or it is not. `None` means nothing live knows, and the remembered flip in
+/// `ON` is the best answer there is.
+///
+/// A chained action (`obs:record>>wait:100`) deliberately falls through to `None`: the key is
+/// doing more than the one thing this could speak for.
+pub(crate) fn live_on(action: &str) -> Option<bool> {
+    let cmd = action.strip_prefix("obs:")?;
+    let obs = crate::engine::state::obs_state().lock().unwrap();
+    if !obs.connected {
+        return None;
+    }
+    match cmd {
+        "record" => Some(obs.recording),
+        "stream" => Some(obs.streaming),
+        "replaybuffer" => Some(obs.replay_active),
+        "mic" => Some(obs.mic_muted),
+        // A scene key wears its ON face when it IS the scene on air.
+        s => s.strip_prefix("scene:").map(|name| obs.current_scene == name),
+    }
+}
+
+/// `Some` when something outside KiBoard owns this key's on/off state. The caller needs to know
+/// which it is, not just the value: a key whose state is owned elsewhere must not ALSO be
+/// remembered here, or the two would fight.
+pub(crate) fn live_face(key: &Key) -> Option<bool> {
+    key.action.as_deref().and_then(live_on)
+}
+
+/// Whether a key's ON face is showing: reality when something live knows, memory otherwise.
+fn face_is_on(key: &Key, at: &str) -> bool {
+    live_face(key).unwrap_or_else(|| is_on(at))
+}
+
 /// The action a two-state key runs right now: the face that is SHOWING, which is the one the user
 /// is looking at when they press. A toggle with no action of its own reuses the base one — that is
 /// a key that changes appearance only.
@@ -122,6 +156,10 @@ impl Default for Grid {
 
 /// No real key pad is bigger than this per side. Also caps the per-page allocation.
 const MAX_SIDE: usize = 12;
+
+/// How many bytes of stored `image` a single page may hold. Three quarters of §4's 64 KB frame,
+/// leaving the labels, actions and JSON scaffolding room in the same message.
+const IMAGE_BUDGET: usize = 48 * 1024;
 
 /// Flattens a page into a dense, hole-preserving vector indexed by `pos`.
 ///
@@ -211,6 +249,20 @@ pub(crate) fn validate(decks: &[Deck]) -> Result<(), String> {
         }
         for page in &deck.pages {
             let mut at: Vec<usize> = Vec::new();
+            // Stored images are re-sent on every push and §4 caps a frame at 64 KB. The editor
+            // downscales to 96x96 (~1-4 KB), so this only ever catches a hand-edited config.json
+            // with a photo pasted into it — which would otherwise arrive slowly or not at all, and
+            // nothing downstream would say why. Budgeted per PAGE, which is conservative: a frame
+            // carries at most one grid-full of a page, never more.
+            let stored_images: usize = page.keys.iter().filter_map(|k| k.image.as_ref()).map(String::len).sum();
+            if stored_images > IMAGE_BUDGET {
+                return Err(format!(
+                    "page \"{}\" stores {} KB of images; a page must stay under {} KB so the layout fits one frame",
+                    page.id,
+                    stored_images / 1024,
+                    IMAGE_BUDGET / 1024
+                ));
+            }
             for key in &page.keys {
                 // `pos` IS the address the phone sends back: two keys on one position means a
                 // press resolves to whichever the host happens to find first.
@@ -283,8 +335,9 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
     // Faces first: `decorate_apps` looks at `action`, so a toggle whose ON face launches a
     // different app has to have swapped it in before the icon and the running dot are attached.
     for (i, key) in keys.iter_mut().enumerate() {
-        let absolute = at_page * grid.size() + i;
-        wear_face(key, is_on(&addr(&deck.id, &page.id, absolute)));
+        let at = addr(&deck.id, &page.id, at_page * grid.size() + i);
+        let on = face_is_on(key, &at);
+        wear_face(key, on);
     }
     decorate_apps(&mut keys);
     // Auto mode has translated its labels since v1; decks never did, so a Chinese phone was shown
@@ -464,6 +517,17 @@ mod tests {
         assert!(validate(&[deck(vec![page("p0", vec![])]), deck(vec![page("p0", vec![])])]).is_err());
         // An empty key carries neither action nor target, and that is exactly what it is for.
         assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Empty)])])]).is_ok());
+
+        // Images the editor produces are welcome; a photo pasted into config.json is not, because
+        // the layout it makes would not fit one frame.
+        let with_image = |pos: usize, bytes: usize| Key {
+            image: Some("x".repeat(bytes)),
+            ..act(pos)
+        };
+        assert!(validate(&[deck(vec![page("p0", (0..15).map(|i| with_image(i, 3_000)).collect())])]).is_ok());
+        let fat = validate(&[deck(vec![page("p0", vec![with_image(0, 2_000_000)])])]);
+        assert!(fat.is_err());
+        assert!(fat.unwrap_err().contains("one frame"), "the error has to say why");
     }
 
     /// The whole F6 toggle contract in one place: the face swaps, `toggle` never travels, and the
@@ -519,6 +583,48 @@ mod tests {
         let wide = layout_json(&deck, page, Grid::new(1, 7), 0);
         assert!(wide.contains("Unmute"));
         flip(&at);
+    }
+
+    /// A key that asks OBS a question must be answered by OBS, not by what KiBoard remembers doing.
+    #[test]
+    fn obs_owns_the_face_of_an_obs_key() {
+        // Nothing is known while OBS is not connected, so the remembered flip is all there is.
+        crate::engine::state::obs_state().lock().unwrap().connected = false;
+        assert_eq!(live_on("obs:record"), None);
+        assert_eq!(live_on("obs:scene:Intro"), None);
+
+        {
+            let mut obs = crate::engine::state::obs_state().lock().unwrap();
+            obs.connected = true;
+            obs.recording = true;
+            obs.mic_muted = false;
+            obs.current_scene = "Intro".into();
+        }
+        assert_eq!(live_on("obs:record"), Some(true));
+        assert_eq!(live_on("obs:mic"), Some(false));
+        // A scene key is on when it is the scene on air, and only then.
+        assert_eq!(live_on("obs:scene:Intro"), Some(true));
+        assert_eq!(live_on("obs:scene:Outro"), Some(false));
+        // Not everything is OBS's business.
+        assert_eq!(live_on("launch:notepad.exe"), None);
+        // A chain does more than the one thing this could speak for.
+        assert_eq!(live_on("obs:record>>wait:100"), None);
+
+        // And the face follows OBS even against a remembered flip pointing the other way.
+        let key = Key {
+            pos: 0,
+            label: "Record".into(),
+            action: Some("obs:record".into()),
+            kind: KeyKind::Action,
+            toggle: Some(crate::config::Face { label: "Stop".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        let at = addr("d", "p0", 0);
+        on_set().lock().unwrap().remove(&at); // memory says OFF
+        assert_eq!(live_face(&key), Some(true), "OBS says recording");
+        assert!(face_is_on(&key, &at), "so the ON face shows regardless of memory");
+
+        crate::engine::state::obs_state().lock().unwrap().connected = false;
     }
 
     // A client cannot make the host allocate an absurd layout by lying in `hello`.
