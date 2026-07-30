@@ -413,6 +413,15 @@ const freeDeckId = (base) => {
   return id;
 };
 
+/// The NAME needs the same treatment as the id. Duplicating twice used to leave two decks both
+/// called "Work copy", and the picker on the phone lists names — so the one thing a user has to
+/// tell them apart by was the one thing that collided.
+const freeDeckName = (base) => {
+  let name = base;
+  for (let n = 2; decks.some((d) => d.name === name); n++) name = `${base} ${n}`;
+  return name;
+};
+
 /**
  * A deck with fresh ids, everywhere.
  *
@@ -439,7 +448,11 @@ function reidentify(deck, id, name) {
 export function duplicateDeck(deckId) {
   const deck = findDeck(deckId);
   if (!deck) return;
-  const copy = reidentify($state.snapshot(deck), freeDeckId(`${deck.id}-copy`), `${deck.name} copy`);
+  const copy = reidentify(
+    $state.snapshot(deck),
+    freeDeckId(`${deck.id}-copy`),
+    freeDeckName(`${deck.name} copy`),
+  );
   withHistory(() => decks.push(copy));
   selectDeck(copy.id);
   showToast(`Duplicated as "${copy.name}"`);
@@ -472,7 +485,7 @@ export function importDeck(parsed) {
     return;
   }
   const base = typeof parsed.id === "string" && parsed.id ? parsed.id : "imported";
-  const deck = reidentify(parsed, freeDeckId(base), parsed.name || "Imported deck");
+  const deck = reidentify(parsed, freeDeckId(base), freeDeckName(parsed.name || "Imported deck"));
   withHistory(() => decks.push(deck));
   selectDeck(deck.id);
   showToast(`Imported "${deck.name}" — check it, then save`);

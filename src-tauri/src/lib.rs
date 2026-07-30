@@ -194,6 +194,9 @@ fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
         let mut cfg = config().lock().unwrap();
         cfg.decks = decks;
         cfg.save();
+        // A key that lost its second state, or a page that was deleted, leaves its remembered face
+        // behind — and a toggle added at that address later would arrive already switched on.
+        engine::deck::forget_orphans(&cfg.decks);
     }
     // Disk is the truth again, so the preview has nothing left to stand in for. Clearing it also
     // re-pushes, which is what puts the saved deck on every phone.

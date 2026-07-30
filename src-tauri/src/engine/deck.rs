@@ -32,6 +32,26 @@ pub(crate) fn is_on(addr: &str) -> bool {
     on_set().lock().unwrap().contains(addr)
 }
 
+/// Drops remembered faces that no longer belong to anything, after the decks were edited.
+///
+/// The set is keyed by address, so a key that loses its second state — or a page or deck that is
+/// deleted — leaves its ON behind. Nothing shows it, but re-adding a toggle at that same address
+/// would find it already switched on, which reads as the editor mis-saving.
+///
+/// Only ever runs on a SAVE. Doing it on the live preview would reset a toggle every time the
+/// editor pushed a keystroke, which is the opposite of the bug.
+pub(crate) fn forget_orphans(decks: &[Deck]) {
+    let mut live: HashSet<String> = HashSet::new();
+    for deck in decks {
+        for page in &deck.pages {
+            for key in page.keys.iter().filter(|k| k.toggle.is_some()) {
+                live.insert(addr(&deck.id, &page.id, key.pos));
+            }
+        }
+    }
+    on_set().lock().unwrap().retain(|at| live.contains(at));
+}
+
 /// Flips a key's face. Returns the new state.
 pub(crate) fn flip(addr: &str) -> bool {
     let mut set = on_set().lock().unwrap();
@@ -583,6 +603,38 @@ mod tests {
         let wide = layout_json(&deck, page, Grid::new(1, 7), 0);
         assert!(wide.contains("Unmute"));
         flip(&at);
+    }
+
+    /// A remembered face outliving the key it belonged to is invisible until someone puts a toggle
+    /// back at that address — and then it arrives already switched on, which reads as the editor
+    /// having mis-saved.
+    #[test]
+    fn a_face_is_forgotten_when_its_key_stops_having_two() {
+        let with_toggle = |pos: usize| Key {
+            pos,
+            action: Some("wait:1".into()),
+            kind: KeyKind::Action,
+            toggle: Some(crate::config::Face { label: "ON".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        let deck_of = |keys: Vec<Key>| vec![Deck {
+            id: "d".into(),
+            pages: vec![Page { id: "p0".into(), keys, ..Default::default() }],
+            ..Default::default()
+        }];
+
+        let kept = addr("d", "p0", 0);
+        let dropped = addr("d", "p0", 1);
+        on_set().lock().unwrap().extend([kept.clone(), dropped.clone()]);
+
+        // Key 1 loses its second state; key 0 keeps its own.
+        forget_orphans(&deck_of(vec![with_toggle(0), Key { pos: 1, kind: KeyKind::Action, ..Default::default() }]));
+        assert!(is_on(&kept), "a toggle that still exists keeps its face");
+        assert!(!is_on(&dropped), "one that does not must not come back switched on");
+
+        // The whole deck going away takes the rest with it.
+        forget_orphans(&[]);
+        assert!(!is_on(&kept));
     }
 
     /// A key that asks OBS a question must be answered by OBS, not by what KiBoard remembers doing.
