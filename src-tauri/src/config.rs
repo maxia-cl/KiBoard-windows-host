@@ -1324,6 +1324,36 @@ mod tests {
         assert_eq!(decks[0].name, "Mine");
     }
 
+    /// A profile that names an icon the vocabulary does not have draws a blank square on the phone
+    /// and a ⬛ in the editor, silently. That is how **81 of the 93 names in use** ended up
+    /// invisible — including most of the Claude Code profile — with nothing anywhere connecting
+    /// the two files.
+    ///
+    /// Reading the JS from a Rust test is not pretty. It is, however, the only place both halves
+    /// are visible at once: the names are minted here and drawn there. (The tidy version is moving
+    /// the vocabulary into `deck-tokens.json` and generating both, like the colours already are.)
+    #[test]
+    fn icons_cover_every_profile() {
+        let js = include_str!("../../src/lib/icons.js");
+        let known: Vec<&str> = js
+            .lines()
+            .filter_map(|line| line.trim().split_once(':'))
+            .map(|(name, _)| name.trim())
+            .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase()))
+            .collect();
+        assert!(known.len() > 50, "the vocabulary did not parse: {} names", known.len());
+
+        let mut missing: Vec<String> = default_profiles()
+            .iter()
+            .flat_map(|p| &p.buttons)
+            .map(|b| b.icon.clone())
+            .filter(|icon| !icon.is_empty() && !known.contains(&icon.as_str()))
+            .collect();
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "profiles name icons nothing can draw: {missing:?}");
+    }
+
     /// A hole in the middle of a page is a hole the user left on purpose — the jump goes after the
     /// last key, not into the first gap.
     #[test]
