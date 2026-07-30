@@ -236,6 +236,10 @@ enum Press {
     Run(String),
     /// Navigate to this page of the current deck.
     Go(String),
+    /// A two-state key: run the action of the face that was showing, then flip the face at this
+    /// address (protocol §3). Separate from `Run` because the flip has to happen after the action
+    /// succeeded, and every phone on the deck has to be told to repaint.
+    Toggle(String, String),
 }
 
 fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Press, &'static str> {
@@ -266,6 +270,14 @@ fn resolve_press(s: &Session, page: usize, pos: usize, kind: &str) -> Result<Pre
         }
         // An unbound long/double press is not an error the user should see as a red key: it is
         // simply a key that does not take that gesture. `no_such_key` is the closest code.
+        // A two-state key flips on the SHORT press only: `hold` and `double` are separate
+        // bindings, not the toggle gesture (protocol §3).
+        KeyKind::Action if kind == "short" && key.toggle.is_some() => {
+            let at = deck::flat(s.grid, page, pos).ok_or("no_such_key")?;
+            let at = deck::addr(&deck.id, &pg.id, at);
+            let action = deck::showing_action(key, deck::is_on(&at)).ok_or("no_such_key")?;
+            Ok(Press::Toggle(action.to_string(), at))
+        }
         KeyKind::Action => key.action_for(kind).map(|a| Press::Run(a.to_string())).ok_or("no_such_key"),
         KeyKind::Empty => Err("no_such_key"),
     }
@@ -444,6 +456,22 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 Ok(Press::Run(action)) if is_session_action(&action) => run_session_action(&action, s, &id),
                 Ok(Press::Run(action)) => match run_action(&action) {
                     Ok(()) => json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string(),
+                    Err(e) => json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string(),
+                },
+                // A toggle that navigates is not a toggle: run it and leave the face alone, or the
+                // deck it switched away from would be left showing a state nobody flips back.
+                Ok(Press::Toggle(action, _)) if is_session_action(&action) => {
+                    run_session_action(&action, s, &id)
+                }
+                Ok(Press::Toggle(action, at)) => match run_action(&action) {
+                    Ok(()) => {
+                        // Flipped only after the action ran: a key whose action failed must not
+                        // start claiming it did the thing.
+                        deck::flip(&at);
+                        // Every phone on this deck repaints, not only the one that pressed.
+                        push_manual_layouts();
+                        json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string()
+                    }
                     Err(e) => json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string(),
                 },
                 Err(e) => json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e}).to_string(),

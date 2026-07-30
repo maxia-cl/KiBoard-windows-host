@@ -20,6 +20,11 @@
     getSelection,
     selectDeck,
     stopPreview,
+    duplicateDeck,
+    renameDeck,
+    importDeck,
+    exportSelectedDeck,
+    showToast,
   } from "./lib/store.svelte.js";
 
   let mode = $state("manual"); // "auto" | "manual" — docs/implementation-plan.md §3.2
@@ -37,6 +42,22 @@
   let decks = $derived(getDecks());
   let selection = $derived(getSelection());
   let ready = $derived(isLoaded());
+  let deck = $derived(decks.find((d) => d.id === selection.deckId) ?? null);
+
+  // Import is the browser's own file input: a deck is a JSON file, and reading one needs no
+  // dialog plugin on the Rust side. Export does need the host — it writes where the user can
+  // find it (see `export_deck`).
+  let fileInput = $state();
+  async function onFileChosen(e) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = ""; // so choosing the same file twice fires again
+    if (!file) return;
+    try {
+      importDeck(JSON.parse(await file.text()));
+    } catch {
+      showToast("That file is not valid JSON");
+    }
+  }
 
   onMount(() => {
     init().catch((e) => (loadError = String(e)));
@@ -83,16 +104,35 @@
       <button class:active={mode === "auto"} onclick={leaveManual}>Auto</button>
       <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>Manual</button>
     </div>
-    {#if mode === "manual" && decks.length > 1}
-      <select
-        class="deck-picker"
-        value={selection.deckId}
-        onchange={(e) => selectDeck(e.currentTarget.value)}
-      >
-        {#each decks as d}
-          <option value={d.id}>{d.name}</option>
-        {/each}
-      </select>
+    {#if mode === "manual" && ready && deck}
+      {#if decks.length > 1}
+        <select
+          class="deck-picker"
+          value={selection.deckId}
+          onchange={(e) => selectDeck(e.currentTarget.value)}
+        >
+          {#each decks as d}
+            <option value={d.id}>{d.name}</option>
+          {/each}
+        </select>
+      {/if}
+      <!-- onchange, not oninput: a rename is one undo step, not one per letter. -->
+      <input
+        class="deck-name"
+        value={deck.name}
+        aria-label="Deck name"
+        onchange={(e) => renameDeck(deck.id, e.currentTarget.value)}
+      />
+      <button class="tool" onclick={() => duplicateDeck(deck.id)} title="Duplicate deck">⧉</button>
+      <button class="tool" onclick={() => exportSelectedDeck(deck.id)} title="Export deck to a file">↑</button>
+      <button class="tool" onclick={() => fileInput.click()} title="Import a deck file">↓</button>
+      <input
+        class="hidden-file"
+        type="file"
+        accept=".json,application/json"
+        bind:this={fileInput}
+        onchange={onFileChosen}
+      />
     {/if}
     <span class="spacer"></span>
     {#if mode === "manual"}
@@ -140,6 +180,8 @@
     flex: 1;
   }
   .deck-picker,
+  .deck-name,
+  .tool,
   .save {
     background: #232326;
     border: 1px solid #34343a;
@@ -147,6 +189,17 @@
     border-radius: 6px;
     padding: 4px 10px;
     cursor: pointer;
+  }
+  .deck-name {
+    width: 140px;
+    cursor: text;
+  }
+  .tool {
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+  .hidden-file {
+    display: none;
   }
   .save:disabled {
     opacity: 0.5;

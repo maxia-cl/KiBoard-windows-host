@@ -51,3 +51,13 @@ export async function testAction(action) {
 export async function loadObsScenes() {
   return await invoke("obs_scenes");
 }
+
+/**
+ * Writes a deck to `<config>/decks/<id>.kbdeck.json` and opens Explorer on it (F6).
+ *
+ * The SAVED deck, not the one being edited: exporting an unsaved draft would hand someone a file
+ * that does not match what this machine runs. Resolves to `{ ok, path }`.
+ */
+export async function exportDeck(deckId) {
+  return await invoke("export_deck", { deckId });
+}

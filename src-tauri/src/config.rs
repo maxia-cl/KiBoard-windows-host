@@ -75,6 +75,11 @@ pub(crate) struct Key {
     pub(crate) hold: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) double: Option<String>,
+    /// The ON face of a two-state key (protocol §3, F6). Config only: `engine::deck` resolves the
+    /// face and STRIPS this before sending, so the phone renders an ordinary key and needs no code
+    /// of its own to draw a toggle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) toggle: Option<Face>,
     /// Page this key navigates to, for `kind: folder | page`. Names a `Page::id` in the same deck.
     ///
     /// PROTOCOL AMENDMENT (F2): the draft's fixtures show `folder` keys with no destination
@@ -88,6 +93,22 @@ pub(crate) struct Key {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) state: Option<serde_json::Value>,
     pub(crate) kind: KeyKind,
+}
+
+/// What a two-state key looks like when it is ON. Every field is optional and overrides only
+/// itself: a toggle that changes the label alone keeps the OFF face's icon, colour and action.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub(crate) struct Face {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) icon: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) action: Option<String>,
 }
 
 impl Key {
@@ -1100,17 +1121,30 @@ fn default_true() -> bool {
     true
 }
 
+/// Where everything KiBoard writes lives.
+///
+/// KIBOARD_CONFIG_DIR points a dev build at a throwaway config. Without it, testing means running
+/// against the real one — which holds live pairing tokens and gets rewritten by the v1->v2
+/// migration on first load.
+pub(crate) fn config_dir() -> std::path::PathBuf {
+    // `cargo test` is not exempt: any test that reaches `config()` runs `Config::load`, which ENDS
+    // BY SAVING. An un-isolated test run therefore rewrites the user's live config.json — found
+    // the hard way on 2026-07-29, when running the F6 suite moved its timestamp. The environment
+    // variable is a thing a human has to remember; this is not.
+    #[cfg(test)]
+    let dir = std::env::temp_dir().join("KiBoard-test");
+    #[cfg(not(test))]
+    let dir = match std::env::var_os("KIBOARD_CONFIG_DIR") {
+        Some(d) => std::path::PathBuf::from(d),
+        None => dirs::config_dir().unwrap_or(std::env::temp_dir()).join("KiBoard"),
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 impl Config {
     fn path() -> std::path::PathBuf {
-        // KIBOARD_CONFIG_DIR points a dev build at a throwaway config. Without it, testing means
-        // running against the real one — which holds live pairing tokens and gets rewritten by the
-        // v1->v2 migration on first load.
-        let dir = match std::env::var_os("KIBOARD_CONFIG_DIR") {
-            Some(d) => std::path::PathBuf::from(d),
-            None => dirs::config_dir().unwrap_or(std::env::temp_dir()).join("KiBoard"),
-        };
-        let _ = std::fs::create_dir_all(&dir);
-        dir.join("config.json")
+        config_dir().join("config.json")
     }
     fn load() -> Config {
         let raw = std::fs::read_to_string(Self::path()).ok();

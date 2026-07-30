@@ -4,9 +4,95 @@
 //! Decks are authored on the reference 5×3 grid. A client with a different grid — a tablet, a
 //! folding phone, a future 4×2 device — gets the SAME keys in the same order, just cut into
 //! different pages. Nothing in the stored deck depends on the client.
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
+
 use serde_json::json;
 
 use crate::config::{Deck, Key, KeyKind, Page};
+
+/// Which two-state keys are showing their ON face right now (protocol §3, F6).
+///
+/// ponytail: a `HashSet` of addresses in memory, not a field in `config.json`. A toggle is a
+/// running fact, not a preference — persisting it would mean a disk write on every press, and the
+/// contract already says a restart shows the OFF face. Persist it when someone misses it.
+static ON: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+fn on_set() -> &'static Mutex<HashSet<String>> {
+    ON.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// A key's identity for toggle purposes. Deliberately the ABSOLUTE position in the page, not the
+/// per-grid one: two phones with different grids see the same key at different `pos`, and they
+/// must agree on which face is showing.
+pub(crate) fn addr(deck_id: &str, page_id: &str, pos: usize) -> String {
+    format!("{deck_id}/{page_id}/{pos}")
+}
+
+pub(crate) fn is_on(addr: &str) -> bool {
+    on_set().lock().unwrap().contains(addr)
+}
+
+/// Flips a key's face. Returns the new state.
+pub(crate) fn flip(addr: &str) -> bool {
+    let mut set = on_set().lock().unwrap();
+    if set.remove(addr) {
+        false
+    } else {
+        set.insert(addr.to_string());
+        true
+    }
+}
+
+/// The action a two-state key runs right now: the face that is SHOWING, which is the one the user
+/// is looking at when they press. A toggle with no action of its own reuses the base one — that is
+/// a key that changes appearance only.
+pub(crate) fn showing_action(key: &Key, on: bool) -> Option<&str> {
+    if on {
+        if let Some(face) = &key.toggle {
+            if let Some(action) = face.action.as_deref() {
+                return Some(action);
+            }
+        }
+    }
+    key.action.as_deref()
+}
+
+/// Paints the ON face over a key and drops `toggle` so it never reaches the phone. Each field
+/// overrides only itself: a toggle that sets just the label keeps the rest of the key.
+fn wear_face(key: &mut Key, on: bool) {
+    let Some(face) = key.toggle.take() else { return };
+    if on {
+        if !face.label.is_empty() {
+            key.label = face.label;
+        }
+        if !face.icon.is_empty() {
+            key.icon = face.icon;
+            // A face that names an icon means the icon, not the image the OFF face carried.
+            key.image = None;
+        }
+        if face.image.is_some() {
+            key.image = face.image;
+        }
+        if face.color.is_some() {
+            key.color = face.color;
+        }
+        if let Some(action) = face.action {
+            key.action = Some(action);
+        }
+    }
+    set_state(key, "on", json!(on));
+}
+
+/// Merges one field into a key's live `state` without dropping what is already there — `running`
+/// is written by `decorate_apps` and `on` by the toggle, and a key can have both.
+fn set_state(key: &mut Key, field: &str, value: serde_json::Value) {
+    match key.state.as_mut().and_then(|v| v.as_object_mut()) {
+        Some(obj) => {
+            obj.insert(field.to_string(), value);
+        }
+        None => key.state = Some(json!({ field: value })),
+    }
+}
 
 /// The key grid a client declared in `hello`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,11 +167,17 @@ pub(crate) fn keys_for(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
 /// authenticated client cannot ask for something that is not on the layout it was given. Anything
 /// off the grid, past the end, or landing on a hole resolves to `None` (`no_such_key`).
 pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Option<&Key> {
+    let at = flat(grid, at_page, pos)?;
+    page.keys.iter().find(|k| k.pos == at && k.kind != KeyKind::Empty)
+}
+
+/// The key's absolute address in the page behind a (client page, client pos) pair. Grid-dependent
+/// going in, grid-independent coming out — which is what makes it usable as a toggle's identity.
+pub(crate) fn flat(grid: Grid, at_page: usize, pos: usize) -> Option<usize> {
     if pos >= grid.size() {
         return None;
     }
-    let flat = at_page.checked_mul(grid.size())?.checked_add(pos)?;
-    page.keys.iter().find(|k| k.pos == flat && k.kind != KeyKind::Empty)
+    at_page.checked_mul(grid.size())?.checked_add(pos)
 }
 
 /// Rejects decks the phone could not render or resolve. The editor is not the only writer —
@@ -179,7 +271,7 @@ fn decorate_apps(keys: &mut [Key]) {
                 key.image = Some(format!("data:image/png;base64,{b64}"));
             }
         }
-        key.state = Some(json!({ "running": running }));
+        set_state(key, "running", json!(running));
     }
 }
 
@@ -188,6 +280,12 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
     let mut keys = keys_for(page, grid, at_page);
+    // Faces first: `decorate_apps` looks at `action`, so a toggle whose ON face launches a
+    // different app has to have swapped it in before the icon and the running dot are attached.
+    for (i, key) in keys.iter_mut().enumerate() {
+        let absolute = at_page * grid.size() + i;
+        wear_face(key, is_on(&addr(&deck.id, &page.id, absolute)));
+    }
     decorate_apps(&mut keys);
     // Auto mode has translated its labels since v1; decks never did, so a Chinese phone was shown
     // "Ventanas" and "Mazos". `tr` returns anything it does not know unchanged, which is exactly
@@ -366,6 +464,61 @@ mod tests {
         assert!(validate(&[deck(vec![page("p0", vec![])]), deck(vec![page("p0", vec![])])]).is_err());
         // An empty key carries neither action nor target, and that is exactly what it is for.
         assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Empty)])])]).is_ok());
+    }
+
+    /// The whole F6 toggle contract in one place: the face swaps, `toggle` never travels, and the
+    /// address survives being read through a different grid than the one it was flipped on.
+    #[test]
+    fn a_two_state_key_swaps_its_face_and_never_ships_the_spare() {
+        let deck = Deck {
+            id: "d".into(),
+            pages: vec![Page {
+                id: "p0".into(),
+                keys: vec![Key {
+                    pos: 6,
+                    label: "Mute".into(),
+                    action: Some("vol:mute".into()),
+                    kind: KeyKind::Action,
+                    toggle: Some(crate::config::Face {
+                        label: "Unmute".into(),
+                        action: Some("vol:unmute".into()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let page = &deck.pages[0];
+        let at = addr("d", "p0", 6);
+        on_set().lock().unwrap().remove(&at);
+
+        // Unticking "Second state" in the editor sends `"toggle": null`, not a missing field.
+        // Rejecting that would mean a deck the user just edited can no longer be saved.
+        let off: Key = serde_json::from_str(r#"{"pos":0,"kind":"action","toggle":null}"#).expect("null toggle");
+        assert!(off.toggle.is_none());
+
+        let grid = Grid::new(2, 3); // six per page, so pos 6 is the first key of client page 1
+        let off = layout_json(&deck, page, grid, 1);
+        assert!(off.contains("Mute") && !off.contains("Unmute"));
+        assert!(off.contains("\"on\":false"));
+        assert!(!off.contains("toggle"), "the spare face must not reach the phone");
+
+        // What a press would run, and what it does to the face.
+        let key = resolve(page, grid, 1, 0).expect("the key");
+        assert_eq!(showing_action(key, is_on(&at)), Some("vol:mute"));
+        assert!(flip(&at));
+        assert_eq!(showing_action(key, is_on(&at)), Some("vol:unmute"));
+
+        let on = layout_json(&deck, page, grid, 1);
+        assert!(on.contains("Unmute") && on.contains("\"on\":true"));
+
+        // A phone with a different grid sees the SAME face: the address is absolute, so a
+        // 1x7 client is not looking at a key that a 2x3 client flipped somewhere else.
+        let wide = layout_json(&deck, page, Grid::new(1, 7), 0);
+        assert!(wide.contains("Unmute"));
+        flip(&at);
     }
 
     // A client cannot make the host allocate an absurd layout by lying in `hello`.

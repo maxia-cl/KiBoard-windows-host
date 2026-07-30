@@ -9,10 +9,55 @@
   let scope = $derived(selection.pos != null ? resolveScope(deckId, selection.pageId) : null);
   // `pos` is the key's ABSOLUTE address in the page, not an index into a dense screen array.
   let key = $derived(scope?.keys.find((k) => k.pos === selection.pos) ?? null);
-  let showIconPicker = $state(false);
+  // Which icon field the picker is filling: the key's own, or the ON face's.
+  let picking = $state(null);
 
   function set(field, value) {
     updateKeyFields(deckId, selection.pageId, selection.pos, { [field]: value });
+  }
+
+  /** Edits one field of the ON face without disturbing the rest of it (protocol §3). */
+  function setFace(field, value) {
+    set("toggle", { ...(key.toggle ?? {}), [field]: value });
+  }
+
+  // --- multi-action (F6) ---------------------------------------------------
+  // The v1 DSL chains steps with ">>" and has since v1; what F6 adds is a way to write one
+  // without typing the separator. Purely a view over the same string — the stored action stays
+  // exactly what `run_action` has always parsed, so nothing downstream learns a new shape.
+  const steps = (action) => (action ?? "").split(">>").map((s) => s.trim());
+  const joined = (list) => list.filter((s) => s !== "").join(" >> ");
+
+  function setStep(action, i, value) {
+    const list = steps(action);
+    list[i] = value;
+    return joined(list);
+  }
+
+  /**
+   * A custom image, downscaled to the key's own size before it is stored.
+   *
+   * The whole `layout` frame is capped at 64 KB (protocol §4), and this data: URI is stored in the
+   * deck and re-sent on every push — a 2 MB photo dropped on three keys would make the page
+   * unsendable. 96 px is twice the drawn key on a phone at 3x, and lands around 4 KB.
+   */
+  async function pickImage(file, apply) {
+    if (!file) return;
+    const SIZE = 96;
+    try {
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = SIZE;
+      const ctx = canvas.getContext("2d");
+      const scale = Math.min(SIZE / bitmap.width, SIZE / bitmap.height);
+      const w = bitmap.width * scale;
+      const h = bitmap.height * scale;
+      ctx.drawImage(bitmap, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+      apply(canvas.toDataURL("image/png"));
+    } catch {
+      // A file the browser cannot decode (a renamed .txt, a broken PNG) is not worth a dialog.
+      apply(null);
+    }
   }
 </script>
 
@@ -33,9 +78,23 @@
 
     <label>
       Icon
-      <button class="icon-btn" onclick={() => (showIconPicker = true)}>
+      <button class="icon-btn" onclick={() => (picking = "icon")}>
         {iconGlyph(key.icon)} change…
       </button>
+    </label>
+
+    <label>
+      Image
+      <div class="row">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onchange={(e) => pickImage(e.currentTarget.files?.[0], (img) => set("image", img))}
+        />
+        {#if key.image}
+          <button class="icon-btn" onclick={() => set("image", null)} title="Back to the icon">✕</button>
+        {/if}
+      </div>
     </label>
 
     <label>
@@ -44,10 +103,23 @@
     </label>
 
     {#if key.kind === "action"}
-      <label>
-        Short press
-        <input value={key.action ?? ""} oninput={(e) => set("action", e.currentTarget.value)} />
-      </label>
+      <fieldset>
+        <legend>Short press</legend>
+        {#each steps(key.action) as step, i}
+          <div class="row">
+            <input
+              value={step}
+              placeholder="ctrl+c"
+              oninput={(e) => set("action", setStep(key.action, i, e.currentTarget.value))}
+            />
+            {#if steps(key.action).length > 1}
+              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title="Remove step">✕</button>
+            {/if}
+          </div>
+        {/each}
+        <button class="add" onclick={() => set("action", `${key.action ?? ""} >> `)}>+ Add step</button>
+      </fieldset>
+
       <label>
         Long
         <input value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value)} />
@@ -56,6 +128,43 @@
         Double
         <input value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value)} />
       </label>
+
+      <label class="checkbox">
+        <input
+          type="checkbox"
+          checked={!!key.toggle}
+          onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)}
+        />
+        Second state
+      </label>
+
+      {#if key.toggle}
+        <fieldset>
+          <legend>When on</legend>
+          <p class="hint">A short press swaps to this face. Empty fields keep what is above.</p>
+          <input
+            value={key.toggle.label ?? ""}
+            placeholder="Label"
+            oninput={(e) => setFace("label", e.currentTarget.value)}
+          />
+          <div class="row">
+            <button class="icon-btn grow" onclick={() => (picking = "toggle-icon")}>
+              {iconGlyph(key.toggle.icon)} icon…
+            </button>
+            <input
+              type="color"
+              value={key.toggle.color ?? key.color ?? "#2C2C2E"}
+              oninput={(e) => setFace("color", e.currentTarget.value)}
+            />
+          </div>
+          <input
+            value={key.toggle.action ?? ""}
+            placeholder="Action (blank = the same one)"
+            oninput={(e) => setFace("action", e.currentTarget.value)}
+          />
+        </fieldset>
+      {/if}
+
       <label class="checkbox">
         <input type="checkbox" checked={!!key.danger} onchange={(e) => set("danger", e.currentTarget.checked)} />
         Ask to confirm
@@ -69,14 +178,15 @@
   {/if}
 </div>
 
-{#if showIconPicker}
+{#if picking}
   <IconPicker
-    current={key?.icon}
+    current={picking === "icon" ? key?.icon : key?.toggle?.icon}
     onpick={(icon) => {
-      set("icon", icon);
-      showIconPicker = false;
+      if (picking === "icon") set("icon", icon);
+      else setFace("icon", icon);
+      picking = null;
     }}
-    onclose={() => (showIconPicker = false)}
+    onclose={() => (picking = null)}
   />
 {/if}
 
@@ -120,18 +230,56 @@
     flex-direction: row;
     align-items: center;
   }
+  fieldset {
+    border: 1px solid #3a3a3c;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  legend {
+    font-size: 12px;
+    color: var(--deck-color-text-secondary);
+    padding: 0 4px;
+  }
+  .row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+  }
+  .row input:not([type]) {
+    flex: 1;
+    min-width: 0;
+  }
+  .grow {
+    flex: 1;
+  }
   input,
-  .icon-btn {
+  .icon-btn,
+  .add {
     background: #2c2c2e;
     border: 1px solid #3a3a3c;
     border-radius: 6px;
     padding: 6px 8px;
     color: var(--deck-color-text-primary);
     font-size: 13px;
+    min-width: 0;
   }
-  .icon-btn {
+  input[type="file"] {
+    font-size: 11px;
+    padding: 4px;
+  }
+  .icon-btn,
+  .add {
     cursor: pointer;
     text-align: left;
+  }
+  .add {
+    font-size: 12px;
+    color: var(--deck-color-text-secondary);
   }
   .test {
     margin-top: 8px;
