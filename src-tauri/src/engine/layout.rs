@@ -199,7 +199,22 @@ pub async fn watch_active_app() {
     // Change detection stays on the JSON: comparing the rendered form is what catches a live-state
     // change (OBS started recording) that leaves the profile identical.
     let mut last_layout = String::new();
+    // The auto fingerprint below cannot speak for MANUAL sessions, and since F6 a deck can hold a
+    // two-state key whose truth is OBS's rather than ours. It gets its own fingerprint here, on
+    // the timer that is already running, rather than a second one or a hook inside obs.rs.
+    let mut last_live = String::new();
     loop {
+        let live = {
+            let o = obs_state().lock().unwrap();
+            format!(
+                "{}|{}|{}|{}|{}|{}",
+                o.connected, o.recording, o.streaming, o.replay_active, o.mic_muted, o.current_scene
+            )
+        };
+        if live != last_live {
+            last_live = live;
+            crate::net::ws::push_manual_layouts();
+        }
         let (app, title, path, pid) = match active_win_pos_rs::get_active_window() {
             Ok(w) => (
                 w.app_name,

@@ -15,6 +15,7 @@ import {
   testAction,
   previewDecks,
   clearPreview,
+  exportDeck,
 } from "./bridge.js";
 
 let decks = $state([]);
@@ -187,10 +188,31 @@ function withHistory(fn) {
 export const canUndo = () => historyStack.length > 0;
 export const canRedo = () => redoStack.length > 0;
 
+/**
+ * Puts the selection back on something that exists.
+ *
+ * A history jump can take the selected deck or page away — undoing an import, a duplicate or a
+ * new page does exactly that. Left alone, the editor draws a deck that is not there: no keys, no
+ * name, and no deck picker to escape with, because the picker lives on the same deck. The host
+ * snaps the same way when a phone is left pointing at a deleted deck (`manual_layout`).
+ */
+function snapSelection() {
+  const deck = decks.find((d) => d.id === selection.deckId) ?? decks[0];
+  if (!deck) {
+    selection = { deckId: null, pageId: null, screen: 0, pos: null };
+    return;
+  }
+  const page = deck.pages.find((p) => p.id === selection.pageId) ?? deck.pages[0];
+  if (deck.id !== selection.deckId || page?.id !== selection.pageId) {
+    selection = { deckId: deck.id, pageId: page?.id ?? null, screen: 0, pos: null };
+  }
+}
+
 export function undo() {
   if (!historyStack.length) return;
   redoStack.push(snapshot());
   decks = historyStack.pop();
+  snapSelection();
   dirty = true;
   schedulePreview();
 }
@@ -198,6 +220,7 @@ export function redo() {
   if (!redoStack.length) return;
   historyStack.push(snapshot());
   decks = redoStack.pop();
+  snapSelection();
   dirty = true;
   schedulePreview();
 }
@@ -379,6 +402,80 @@ export function moveKeyToScreen(deckId, from, targetScreen) {
     upsertKey(scope, free, { ...moving, pos: free });
   });
   showToast(`Moved to screen ${targetScreen + 1}`);
+}
+
+// --- decks (F6) ----------------------------------------------------------
+
+const shortId = () => crypto.randomUUID().slice(0, 8);
+const freeDeckId = (base) => {
+  let id = base;
+  for (let n = 2; decks.some((d) => d.id === id); n++) id = `${base}-${n}`;
+  return id;
+};
+
+/**
+ * A deck with fresh ids, everywhere.
+ *
+ * Page ids cannot be reused: a `folder`/`page` key names its destination in `target`, so a copy
+ * that kept them would have its navigation land on the ORIGINAL deck's pages the moment the two
+ * drift apart. The old→new map is what keeps the copy pointing at itself.
+ */
+function reidentify(deck, id, name) {
+  const pageIds = new Map(deck.pages.map((p) => [p.id, `p${shortId()}`]));
+  return {
+    ...deck,
+    id,
+    name,
+    pages: deck.pages.map((page) => ({
+      ...page,
+      id: pageIds.get(page.id),
+      keys: page.keys.map((key) =>
+        key.target ? { ...key, target: pageIds.get(key.target) ?? key.target } : { ...key },
+      ),
+    })),
+  };
+}
+
+export function duplicateDeck(deckId) {
+  const deck = findDeck(deckId);
+  if (!deck) return;
+  const copy = reidentify($state.snapshot(deck), freeDeckId(`${deck.id}-copy`), `${deck.name} copy`);
+  withHistory(() => decks.push(copy));
+  selectDeck(copy.id);
+  showToast(`Duplicated as "${copy.name}"`);
+}
+
+export function renameDeck(deckId, name) {
+  const deck = findDeck(deckId);
+  if (!deck || deck.name === name) return;
+  withHistory(() => (deck.name = name));
+}
+
+/** Writes the SAVED deck to a file and reveals it. Unsaved edits are not in it — see `exportDeck`. */
+export async function exportSelectedDeck(deckId) {
+  if (dirty) {
+    showToast("Save first — the file is written from what is stored");
+    return;
+  }
+  const result = await exportDeck(deckId).catch((e) => ({ ok: false, error: String(e) }));
+  showToast(result.ok ? `Exported to ${result.path}` : `Export failed: ${result.error}`);
+}
+
+/**
+ * Adds a deck read from a `.kbdeck.json` file. Always re-identified, never merged into the deck it
+ * came from: an import that silently replaced a deck of the same id would be a way to lose work by
+ * opening a file. Saving is still the user's move, so the host validates it like any other edit.
+ */
+export function importDeck(parsed) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.pages) || !parsed.pages.length) {
+    showToast("That file is not a deck");
+    return;
+  }
+  const base = typeof parsed.id === "string" && parsed.id ? parsed.id : "imported";
+  const deck = reidentify(parsed, freeDeckId(base), parsed.name || "Imported deck");
+  withHistory(() => decks.push(deck));
+  selectDeck(deck.id);
+  showToast(`Imported "${deck.name}" — check it, then save`);
 }
 
 export function updateKeyFields(deckId, pageId, pos, fields) {

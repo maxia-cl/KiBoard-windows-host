@@ -268,6 +268,43 @@ fn set_obs_password(password: String) -> serde_json::Value {
     json!({ "ok": true })
 }
 
+/// Writes one deck to `<config>/decks/<id>.kbdeck.json` and shows it in Explorer.
+///
+/// Sharing a deck is a file operation, not a protocol one: the file holds exactly the `Deck` of
+/// §3, so importing it is the editor reading JSON back. ponytail: no file-dialog plugin — the
+/// export lands in one predictable place and Explorer opens on it, which is enough to attach it
+/// to an e-mail. A "save as" dialog is a dependency away if anyone asks.
+#[tauri::command]
+fn export_deck(app: tauri::AppHandle, deck_id: String) -> serde_json::Value {
+    let deck = config().lock().unwrap().decks.iter().find(|d| d.id == deck_id).cloned();
+    let Some(deck) = deck else {
+        return json!({ "ok": false, "error": "no_such_deck" });
+    };
+    let dir = config::config_dir().join("decks");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return json!({ "ok": false, "error": e.to_string() });
+    }
+    let path = dir.join(format!("{}.kbdeck.json", safe_file_name(&deck.id)));
+    let body = serde_json::to_string_pretty(&deck).unwrap_or_default();
+    if let Err(e) = std::fs::write(&path, body) {
+        return json!({ "ok": false, "error": e.to_string() });
+    }
+    use tauri_plugin_opener::OpenerExt;
+    let _ = app.opener().reveal_item_in_dir(&path);
+    json!({ "ok": true, "path": path.to_string_lossy() })
+}
+
+/// A deck id comes from `config.json` or from a file somebody else wrote, and here it becomes a
+/// path. Everything that is not a plain name is flattened, so an id of `../../evil` cannot write
+/// outside the decks folder.
+fn safe_file_name(id: &str) -> String {
+    let name: String = id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    if name.trim_matches('-').is_empty() { "deck".into() } else { name }
+}
+
 /// QR of a profile to share it: another KiBoard scans it from the phone and imports it.
 #[tauri::command]
 fn profile_qr(profile: Profile) -> String {
@@ -353,6 +390,7 @@ pub fn run() {
             app_catalogue,
             preview_decks,
             clear_preview,
+            export_deck,
             obs_scenes,
             profile_qr,
             obs_info,
@@ -450,4 +488,24 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_file_name;
+
+    /// `export_deck` turns a deck id into a path, and a deck id can arrive from a file somebody
+    /// else wrote. Everything below would otherwise escape the decks folder or name a device.
+    #[test]
+    fn a_deck_id_cannot_escape_the_decks_folder() {
+        assert_eq!(safe_file_name("launcher"), "launcher");
+        assert_eq!(safe_file_name("my-deck_2"), "my-deck_2");
+        assert!(!safe_file_name("../../evil").contains('.'));
+        assert!(!safe_file_name("..\\..\\evil").contains('\\'));
+        assert!(!safe_file_name("C:/Windows/System32/x").contains(':'));
+        assert!(!safe_file_name("con.txt").contains('.'));
+        // An id made entirely of punctuation would otherwise produce an empty file name.
+        assert_eq!(safe_file_name("///"), "deck");
+        assert_eq!(safe_file_name(""), "deck");
+    }
 }
