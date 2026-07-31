@@ -41,7 +41,14 @@ pub(crate) fn is_on(addr: &str) -> bool {
 /// Only ever runs on a SAVE. Doing it on the live preview would reset a toggle every time the
 /// editor pushed a keystroke, which is the opposite of the bug.
 pub(crate) fn forget_orphans(decks: &[Deck]) {
-    let mut live: HashSet<String> = HashSet::new();
+    let live = live_faces(decks);
+    on_set().lock().unwrap().retain(|at| live.contains(at));
+}
+
+/// The addresses that still belong to a two-state key. Split out so the rule can be tested without
+/// the global set — two tests pruning one static in parallel is a race, not a check.
+fn live_faces(decks: &[Deck]) -> HashSet<String> {
+    let mut live = HashSet::new();
     for deck in decks {
         for page in &deck.pages {
             for key in page.keys.iter().filter(|k| k.toggle.is_some()) {
@@ -49,7 +56,7 @@ pub(crate) fn forget_orphans(decks: &[Deck]) {
             }
         }
     }
-    on_set().lock().unwrap().retain(|at| live.contains(at));
+    live
 }
 
 /// Flips a key's face. Returns the new state.
@@ -623,18 +630,16 @@ mod tests {
             ..Default::default()
         }];
 
-        let kept = addr("d", "p0", 0);
-        let dropped = addr("d", "p0", 1);
-        on_set().lock().unwrap().extend([kept.clone(), dropped.clone()]);
-
         // Key 1 loses its second state; key 0 keeps its own.
-        forget_orphans(&deck_of(vec![with_toggle(0), Key { pos: 1, kind: KeyKind::Action, ..Default::default() }]));
-        assert!(is_on(&kept), "a toggle that still exists keeps its face");
-        assert!(!is_on(&dropped), "one that does not must not come back switched on");
+        let after = live_faces(&deck_of(vec![
+            with_toggle(0),
+            Key { pos: 1, kind: KeyKind::Action, ..Default::default() },
+        ]));
+        assert!(after.contains(&addr("d", "p0", 0)), "a toggle that still exists keeps its face");
+        assert!(!after.contains(&addr("d", "p0", 1)), "one that does not must not come back on");
 
-        // The whole deck going away takes the rest with it.
-        forget_orphans(&[]);
-        assert!(!is_on(&kept));
+        // A deck that is gone takes every face on it.
+        assert!(live_faces(&[]).is_empty());
     }
 
     /// A key that asks OBS a question must be answered by OBS, not by what KiBoard remembers doing.
