@@ -68,6 +68,36 @@ tiene escáner).
 
 41 tests, clippy limpio.
 
+## Publicación y actualizaciones
+
+Las compilaciones se publican en
+[`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases), que es
+público porque el updater necesita un feed que pueda leer sin token. El endpoint del updater en
+`src-tauri/tauri.conf.json` apunta ahí.
+
+**Dos cosas siguen siendo de v1 y hay que reemplazarlas antes del primer release de v2:**
+
+1. **La clave de firma.** `plugins.updater.pubkey` sigue siendo la clave con la que firma KiBoard
+   v1. Un release de v2 firmado con una clave de v2 sería rechazado por ella. Hay que generar una,
+   guardar la mitad privada fuera de este repo, y pegar la pública en `tauri.conf.json`:
+
+   ```bash
+   npx tauri signer generate -w kiboard2-updater.key
+   ```
+
+   La clave privada y su contraseña pasan a ser los secretos `TAURI_SIGNING_PRIVATE_KEY` y
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` de lo que construya el release. Perderlas significa que
+   ningún host instalado podrá volver a actualizarse nunca — no hay recuperación, solo reinstalar a
+   mano.
+
+2. **La versión.** `0.1.29` es donde quedó la numeración de v1, heredada por el port con `git
+   subtree`. v2 debería empezar por su propio número, y el updater compara versiones, así que hay
+   que decidirlo antes de publicar nada.
+
+Hasta que las dos estén hechas el updater simplemente no encuentra nada, que es el fallo seguro. El
+endpoint apuntaba al feed de v1 — ese **no** era seguro: la firma coincidía, así que un host de v2
+podía haberse instalado v1 encima.
+
 ## Stack
 
 Tauri 2 + Rust, UI del editor en Svelte 5 + Vite. Windows primero; el código específico de
