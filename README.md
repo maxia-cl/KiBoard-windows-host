@@ -33,26 +33,36 @@ the updater needs a public feed.
 
 ## Status
 
-**F1 done** (F0 before it). The v1 host (`src-tauri/`) was ported from `ricardomendezv/Kiboard` via
-a `git subtree split` (full history preserved) and modularized into `config.rs`, `net/`, `engine/`,
-`platform/`, `integrations/obs.rs` with no behavior change — verified against a real WebSocket
-handshake using the v1 protocol. `KiBoard-protocol` is pinned as a git submodule at
-`KiBoard-protocol/` (tag `v0.1.0-fp`); `npm run dev`/`build` regenerate `src/tokens.g.css` from it
+**FP through F6 done, F7 part-way.** `KiBoard-protocol` is pinned as a git submodule at
+`KiBoard-protocol/`, tag `v0.3.0-f7`; `npm run dev`/`build` regenerate `src/tokens.g.css` from it
 automatically.
 
-F1 added real mDNS advertisement (`net/discovery.rs`, the `mdns-sd` crate) and v2 pairing by
-six-digit code with per-device, individually revocable tokens (`net/pairing.rs`) — the host now
-rejects a v1-shaped `hello` with `protocol_too_old`. A "Pairing & devices" panel (the ⚙ button)
-shows the host id, the pending code, and lets you revoke one device without affecting the others.
-Verified with a live pairing round trip against the compiled host and, separately, against the
-shipping Dart client in `KiBoard-app`.
+- **F0/F1** — the v1 host was ported from `ricardomendezv/Kiboard` with a `git subtree split` (full
+  history) and modularized into `config.rs`, `net/`, `engine/`, `platform/`, `integrations/obs.rs`
+  with no behaviour change. Then real mDNS (`net/discovery.rs`) and v2 pairing by six-digit code,
+  with per-device revocable tokens. A v1-shaped `hello` is rejected with `protocol_too_old`.
+- **F2/F3** — the Deck/Page/Key model, repagination onto whatever grid the client declares, and
+  §4.2's rule that the phone sends a POSITION and never an action. Sessions persist; the host
+  translates es/en/zh.
+- **F4** — the app catalogue from `Get-StartApps`, a generated **Launcher** deck, `launch:`,
+  `focus:` and `kill:`. Packaged apps need a second identity (the window's AppUserModel ID), since
+  every one of their windows is owned by `ApplicationFrameHost.exe`.
+- **F5** — the editor on real data: `get_decks`/`save_decks`/`app_catalogue` hand back the same
+  `Deck` struct that travels on the wire, and unsaved decks reach the phone live behind one
+  accessor used for rendering *and* press resolution.
+- **F6** — Elgato parity, and past it: two-state keys resolved host-side, action chains, custom
+  images, share by file. For `obs:` keys **OBS owns the face** — a scene key lights up only while
+  it is on air, and the deck repaints when OBS changes with nobody pressing anything.
+- **F7 so far** — the pairing panel and `pairing_status` show `ip:port`, so a phone on a network
+  that drops multicast can be told what to type. And the transport is now **`wss://`** (§2.2): one
+  self-signed certificate per installation in `cert.der`/`key.der` next to `config.json`, which the
+  client pins. **There is no plaintext fallback and this is a breaking change** — host and phone
+  must be rebuilt and installed together.
 
-The **phase FP editor mock-up** — the drawn device, the searchable catalogue, the key inspector
-and all eight drag-and-drop operations, including undo/redo and the double-click/arrow-key
-accessible path — still runs against an in-memory `MockBridge`, now reading fixtures straight from
-the submodule instead of a local copy. Verified interactively in a running `vite dev` session. Real
-Tauri wiring (`TauriBridge` replacing `MockBridge`) is F5. See the implementation plan in
-`KiBoard-protocol`.
+Still open in F7: first-run onboarding, the updater/signing/store listings, telemetry on the
+pairing funnel, and the QR half of the manual-address fallback (the phone has no scanner yet).
+
+41 tests, clippy clean.
 
 ## Stack
 

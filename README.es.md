@@ -34,26 +34,39 @@ privado y el updater necesita un feed público.
 
 ## Estado
 
-**F1 lista** (y antes, F0). El host de v1 (`src-tauri/`) se portó desde `ricardomendezv/Kiboard` con
-un `git subtree split` (historial completo preservado) y se modularizó en `config.rs`, `net/`,
-`engine/`, `platform/`, `integrations/obs.rs` sin cambiar el comportamiento — verificado contra un
-handshake WebSocket real usando el protocolo v1. `KiBoard-protocol` está fijado como submódulo de
-git en `KiBoard-protocol/` (tag `v0.1.0-fp`); `npm run dev`/`build` regeneran `src/tokens.g.css`
-desde ahí automáticamente.
+**FP hasta F6 listas, F7 a medias.** `KiBoard-protocol` está fijado como submódulo de git en
+`KiBoard-protocol/`, tag `v0.3.0-f7`; `npm run dev`/`build` regeneran `src/tokens.g.css` desde ahí
+automáticamente.
 
-F1 sumó anuncio mDNS real (`net/discovery.rs`, el crate `mdns-sd`) y emparejamiento v2 por código
-de 6 dígitos con tokens por dispositivo, revocables uno por uno (`net/pairing.rs`) — el host ahora
-rechaza un `hello` con forma de v1 con `protocol_too_old`. Un panel de "Pairing & devices" (el
-botón ⚙) muestra el id del host, el código pendiente, y permite revocar un dispositivo sin afectar
-a los demás. Verificado con un round-trip de emparejamiento real contra el host compilado y, por
-separado, contra el cliente Dart real de `KiBoard-app`.
+- **F0/F1** — el host de v1 se portó desde `ricardomendezv/Kiboard` con un `git subtree split`
+  (historial completo) y se modularizó en `config.rs`, `net/`, `engine/`, `platform/`,
+  `integrations/obs.rs` sin cambiar el comportamiento. Después, mDNS real (`net/discovery.rs`) y
+  emparejamiento v2 por código de 6 dígitos, con tokens por dispositivo revocables uno a uno. Un
+  `hello` con forma de v1 se rechaza con `protocol_too_old`.
+- **F2/F3** — el modelo Deck/Page/Key, la repaginación sobre la grilla que declare cada cliente, y
+  la regla de §4.2: el teléfono manda una POSICIÓN, nunca una acción. Las sesiones persisten; el
+  host traduce es/en/zh.
+- **F4** — el catálogo de apps vía `Get-StartApps`, un deck **Launcher** generado, y `launch:`,
+  `focus:` y `kill:`. Las apps empaquetadas necesitan una segunda identidad (el AppUserModel ID de
+  la ventana), porque todas sus ventanas pertenecen a `ApplicationFrameHost.exe`.
+- **F5** — el editor sobre datos reales: `get_decks`/`save_decks`/`app_catalogue` devuelven el mismo
+  struct `Deck` que viaja por el cable, y los decks sin guardar llegan al teléfono en vivo detrás de
+  un único accessor, usado para dibujar *y* para resolver la pulsación.
+- **F6** — paridad con Elgato, y más allá: teclas de dos estados resueltas en el host, cadenas de
+  acciones, imágenes propias, compartir por archivo. En las teclas `obs:` **manda OBS**: una tecla
+  de escena se enciende solo mientras está al aire, y el deck se repinta cuando OBS cambia sin que
+  nadie pulse nada.
+- **F7 hasta ahora** — el panel de emparejamiento y `pairing_status` muestran `ip:port`, para poder
+  decirle a un teléfono qué escribir en una red que no deja pasar multicast. Y el transporte ahora
+  es **`wss://`** (§2.2): un certificado autofirmado por instalación en `cert.der`/`key.der` junto a
+  `config.json`, que el cliente fija. **No hay respaldo en texto plano y es un cambio que rompe
+  compatibilidad**: host y teléfono hay que recompilarlos e instalarlos juntos.
 
-La **maqueta del editor de la fase FP** —el dispositivo dibujado, el catálogo con búsqueda, el
-inspector de teclas y las ocho operaciones de arrastrar y soltar, incluyendo deshacer/rehacer y el
-camino accesible de doble clic/flechas— sigue corriendo contra un `MockBridge` en memoria, ahora
-leyendo los fixtures directo desde el submódulo en vez de una copia local. Verificado
-interactivamente en una sesión de `vite dev` corriendo. El cableado real de Tauri (`TauriBridge`
-reemplazando a `MockBridge`) es F5. El plan de implementación está en `KiBoard-protocol`.
+Sigue abierto en F7: el onboarding de primer uso, el updater/firma/fichas de tienda, telemetría del
+embudo de emparejamiento, y la mitad QR del respaldo de dirección manual (el teléfono todavía no
+tiene escáner).
+
+41 tests, clippy limpio.
 
 ## Stack
 
