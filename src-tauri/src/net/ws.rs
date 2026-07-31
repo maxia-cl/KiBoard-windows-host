@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -63,17 +63,34 @@ pub async fn run_ws_server() {
     let listener = match TcpListener::bind(("0.0.0.0", WS_PORT)).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("KiBoard: no se pudo abrir el puerto {WS_PORT}: {e}");
+            eprintln!("KiBoard: could not open port {WS_PORT}: {e}");
             return;
         }
     };
-    eprintln!("KiBoard: escuchando en ws://0.0.0.0:{WS_PORT}");
+    // Without a certificate there is nothing to serve. Falling back to plaintext would be worse
+    // than not listening: every client would keep working, and the token would keep crossing the
+    // LAN in the clear with nobody told (§2.2).
+    let Some(acceptor) = crate::net::tls::acceptor() else {
+        eprintln!("KiBoard: refusing to serve without TLS");
+        return;
+    };
+    eprintln!("KiBoard: listening on wss://0.0.0.0:{WS_PORT}");
     while let Ok((stream, _addr)) = listener.accept().await {
-        tokio::spawn(handle_conn(stream));
+        let acceptor = acceptor.clone();
+        tokio::spawn(async move {
+            // A handshake that fails is a port scan, a stale plaintext client, or a browser — none
+            // of them worth a line in the log.
+            if let Ok(tls) = acceptor.accept(stream).await {
+                handle_conn(tls).await;
+            }
+        });
     }
 }
 
-async fn handle_conn(stream: TcpStream) {
+async fn handle_conn<S>(stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     // Frame/message size cap: a legitimate client sends a few KB of JSON (the largest profile,
     // when importing one). 64 KB cuts off an attacker trying to exhaust memory with giant frames.
     let cfg = tokio_tungstenite::tungstenite::protocol::WebSocketConfig {

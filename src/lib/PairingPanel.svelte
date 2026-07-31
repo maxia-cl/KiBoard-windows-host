@@ -76,6 +76,18 @@
       </div>
       <p class="hint">Type this on the phone if it cannot find this PC by itself.</p>
 
+      <!--
+        §2.2. Only worth looking at when a paired phone starts refusing to connect: that is either
+        this certificate having changed or somebody standing in the middle, and the phone has no
+        way to tell the user which.
+      -->
+      {#if status.fingerprint}
+        <div class="row">
+          <span class="label">Certificate</span>
+          <code class="fingerprint">{status.fingerprint.slice(0, 16)}…</code>
+        </div>
+      {/if}
+
       {#if status.pending}
         <div class="pending">
           <div class="code">{status.pending.code}</div>
@@ -192,6 +204,10 @@
   .hint {
     font-size: 12px;
     color: var(--deck-color-text-secondary, #8a8a8e);
+  }
+  .fingerprint {
+    font-size: 11px;
+    letter-spacing: 0.5px;
   }
   code {
     font-family: ui-monospace, monospace;

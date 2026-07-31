@@ -334,6 +334,10 @@ fn pairing_status() -> serde_json::Value {
         // code rather than left for the user to go and find in Windows' settings.
         "ip": net::pairing::best_lan_ip(),
         "port": net::ws::WS_PORT,
+        // §2.2: what the phone pins. Shown so the two can be compared by eye when a device starts
+        // refusing to connect — that is either a new certificate or someone in the middle, and the
+        // phone cannot tell the user which.
+        "fingerprint": net::tls::fingerprint(),
         "pending": pending.map(|(device, code, expires_in)| json!({
             "device": device, "code": code, "expiresIn": expires_in
         })),

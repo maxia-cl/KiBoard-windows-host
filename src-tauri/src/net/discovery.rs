@@ -37,6 +37,9 @@ pub(crate) fn advertise(mode: &str) {
         ("os", "win"),
         ("mode", mode),
         ("pair", if pairing_open { "open" } else { "closed" }),
+        // §1: which scheme to use. A client that had to guess would find a failed TLS handshake
+        // against a plaintext port indistinguishable from a host that is simply not there.
+        ("tls", "1"),
     ];
 
     if let Some(prev) = REGISTERED.lock().unwrap().take() {
