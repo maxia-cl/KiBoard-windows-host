@@ -194,6 +194,9 @@ fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
         let mut cfg = config().lock().unwrap();
         cfg.decks = decks;
         cfg.save();
+        // A key that lost its second state, or a page that was deleted, leaves its remembered face
+        // behind — and a toggle added at that address later would arrive already switched on.
+        engine::deck::forget_orphans(&cfg.decks);
     }
     // Disk is the truth again, so the preview has nothing left to stand in for. Clearing it also
     // re-pushes, which is what puts the saved deck on every phone.
@@ -326,6 +329,15 @@ fn pairing_status() -> serde_json::Value {
     json!({
         "hostId": cfg.host_id,
         "pairingOpen": cfg.pairing_open,
+        // R1: the phone can always be pointed at an address by hand, for the networks that never
+        // pass mDNS on. That only helps if the PC says what to type, so it is shown next to the
+        // code rather than left for the user to go and find in Windows' settings.
+        "ip": net::pairing::best_lan_ip(),
+        "port": net::ws::WS_PORT,
+        // §2.2: what the phone pins. Shown so the two can be compared by eye when a device starts
+        // refusing to connect — that is either a new certificate or someone in the middle, and the
+        // phone cannot tell the user which.
+        "fingerprint": net::tls::fingerprint(),
         "pending": pending.map(|(device, code, expires_in)| json!({
             "device": device, "code": code, "expiresIn": expires_in
         })),

@@ -1005,6 +1005,41 @@ pub(crate) fn default_decks() -> Vec<Deck> {
     decks
 }
 
+/// Adds a generated Launcher to decks that already exist, and a key that reaches it.
+///
+/// Deliberately ADDITIVE: it never edits or reorders what the user has, because these are their
+/// decks and this runs behind their back on a launch they did not ask anything of. Kept out of
+/// `Config::load` so it can be tested without a real app catalogue behind it.
+fn backfill_launcher(decks: &mut Vec<Deck>, launcher: Deck) {
+    // A deck of that id already there is either the real one or the user's own; either way, not
+    // ours to duplicate or overwrite.
+    if decks.iter().any(|d| d.id == launcher.id) {
+        return;
+    }
+    // The jump key only if nothing already reaches it — the user may have made their own.
+    let reachable = decks
+        .iter()
+        .flat_map(|d| &d.pages)
+        .flat_map(|p| &p.keys)
+        .any(|k| k.action.as_deref() == Some("deck:launcher"));
+    if !reachable {
+        if let Some(page) = decks.first_mut().and_then(|d| d.pages.first_mut()) {
+            // Appended past the last key rather than into a gap: a hole in the middle is a hole
+            // the user left on purpose, and the phone paginates a long page by itself.
+            let pos = page.keys.iter().map(|k| k.pos).max().map_or(0, |last| last + 1);
+            page.keys.push(Key {
+                pos,
+                label: "Launcher".into(),
+                icon: "apps".into(),
+                action: Some("deck:launcher".into()),
+                kind: KeyKind::Action,
+                ..Default::default()
+            });
+        }
+    }
+    decks.push(launcher);
+}
+
 /// Cap on the generated Launcher deck. High on purpose: an alphabetical cut at two pages silently
 /// hid the browser and the editor, which is exactly what a launcher is for. Paging is cheap, a
 /// missing app is not.
@@ -1072,6 +1107,13 @@ const PROFILES_VERSION: u32 = 37;
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
 const CONFIG_VERSION: u32 = 2;
 
+/// How far the seeded decks have been brought forward. 1 = the Launcher exists.
+///
+/// Separate from `PROFILES_VERSION` because decks are the USER's, not ours: profiles get replaced
+/// wholesale on a bump, decks may only ever be added to. And separate from `CONFIG_VERSION`
+/// because nothing about the file's shape changed.
+const DECKS_VERSION: u32 = 1;
+
 /// A phone paired via the v2 six-digit-code flow (protocol/README.md §2). Each device gets its
 /// own token, individually revocable — the pre-F1 model had one shared `token` for everyone.
 #[derive(Serialize, Deserialize, Clone)]
@@ -1106,6 +1148,9 @@ pub(crate) struct Config {
     /// MANUAL mode: decks the user picks. Absent in a v1 file — seeded on migration.
     #[serde(default)]
     pub(crate) decks: Vec<Deck>,
+    /// How far `decks` has been brought forward by seeding. 0 = seeded before the Launcher existed.
+    #[serde(default)]
+    decks_version: u32,
     /// Shape of this file. 0 = a v1 file (the field did not exist), 2 = the v2 model.
     #[serde(default)]
     config_version: u32,
@@ -1163,7 +1208,19 @@ impl Config {
         }
         if c.decks.is_empty() {
             c.decks = default_decks();
+        } else if c.decks_version < DECKS_VERSION {
+            // `default_decks` only ever runs on a config with NO decks, so every installation that
+            // predates F4 kept its single starter deck and never saw that phase's headline
+            // feature: the Launcher built from the machine's own apps. Only someone installing
+            // from scratch got it. Backfill it, so a config that has been carried forward ends up
+            // matching a fresh one.
+            if let Some(launcher) = launcher_deck() {
+                backfill_launcher(&mut c.decks, launcher);
+            }
         }
+        // Recorded even when nothing was added: a user who deletes the Launcher must not find it
+        // waiting for them on the next launch.
+        c.decks_version = DECKS_VERSION;
         if c.token.is_empty() {
             c.token = new_token();
         }
@@ -1202,7 +1259,109 @@ pub(crate) fn new_token() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_decks, default_profiles, Key, KeyKind, Profile, REFERENCE_PAGE};
+    use super::{
+        backfill_launcher, default_decks, default_profiles, Deck, Key, KeyKind, Page, Profile,
+        REFERENCE_PAGE,
+    };
+
+    fn launcher() -> Deck {
+        Deck {
+            id: "launcher".into(),
+            name: "Launcher".into(),
+            pages: vec![Page { id: "p0".into(), keys: vec![Key { pos: 0, ..Default::default() }], ..Default::default() }],
+            ..Default::default()
+        }
+    }
+
+    fn starter(keys: Vec<Key>) -> Vec<Deck> {
+        vec![Deck {
+            id: "starter".into(),
+            name: "KiBoard".into(),
+            pages: vec![Page { id: "p0".into(), keys, ..Default::default() }],
+            ..Default::default()
+        }]
+    }
+
+    fn key_at(pos: usize, action: &str) -> Key {
+        Key { pos, action: Some(action.into()), kind: KeyKind::Action, ..Default::default() }
+    }
+
+    /// The migration runs behind the user's back on a launch they asked nothing of, so what it must
+    /// NOT do matters more than what it does.
+    #[test]
+    fn backfilling_the_launcher_only_ever_adds() {
+        // The case it exists for: a config seeded before F4 has one deck and no way to any app.
+        let mut decks = starter(vec![key_at(0, "ctrl+c"), key_at(1, "ctrl+v")]);
+        backfill_launcher(&mut decks, launcher());
+        assert_eq!(decks.len(), 2);
+        assert_eq!(decks[1].id, "launcher");
+        // The user's own keys are untouched, and the jump is appended PAST them.
+        assert_eq!(decks[0].pages[0].keys.len(), 3);
+        assert_eq!(decks[0].pages[0].keys[0].action.as_deref(), Some("ctrl+c"));
+        let added = decks[0].pages[0].keys.last().unwrap();
+        assert_eq!(added.pos, 2);
+        assert_eq!(added.action.as_deref(), Some("deck:launcher"));
+
+        // Twice is once: a second launch must not stack a second Launcher or a second key.
+        backfill_launcher(&mut decks, launcher());
+        assert_eq!(decks.len(), 2);
+        assert_eq!(decks[0].pages[0].keys.len(), 3);
+    }
+
+    #[test]
+    fn backfilling_respects_what_the_user_already_did() {
+        // Someone who already wired their own way there does not get a second key for it.
+        let mut decks = starter(vec![key_at(0, "deck:launcher")]);
+        backfill_launcher(&mut decks, launcher());
+        assert_eq!(decks[0].pages[0].keys.len(), 1, "their key is the way there");
+        assert_eq!(decks.len(), 2);
+
+        // And a deck of their own under that id is never overwritten.
+        let mine = Deck { id: "launcher".into(), name: "Mine".into(), ..Default::default() };
+        let mut decks = vec![mine];
+        backfill_launcher(&mut decks, launcher());
+        assert_eq!(decks.len(), 1);
+        assert_eq!(decks[0].name, "Mine");
+    }
+
+    /// A profile that names an icon the vocabulary does not have draws a blank square on the phone
+    /// and a ⬛ in the editor, silently. That is how **81 of the 93 names in use** ended up
+    /// invisible — including most of the Claude Code profile — with nothing anywhere connecting
+    /// the two files.
+    ///
+    /// Reading the JS from a Rust test is not pretty. It is, however, the only place both halves
+    /// are visible at once: the names are minted here and drawn there. (The tidy version is moving
+    /// the vocabulary into `deck-tokens.json` and generating both, like the colours already are.)
+    #[test]
+    fn icons_cover_every_profile() {
+        let js = include_str!("../../src/lib/icons.js");
+        let known: Vec<&str> = js
+            .lines()
+            .filter_map(|line| line.trim().split_once(':'))
+            .map(|(name, _)| name.trim())
+            .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase()))
+            .collect();
+        assert!(known.len() > 50, "the vocabulary did not parse: {} names", known.len());
+
+        let mut missing: Vec<String> = default_profiles()
+            .iter()
+            .flat_map(|p| &p.buttons)
+            .map(|b| b.icon.clone())
+            .filter(|icon| !icon.is_empty() && !known.contains(&icon.as_str()))
+            .collect();
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "profiles name icons nothing can draw: {missing:?}");
+    }
+
+    /// A hole in the middle of a page is a hole the user left on purpose — the jump goes after the
+    /// last key, not into the first gap.
+    #[test]
+    fn the_jump_key_lands_past_the_last_key_not_in_a_gap() {
+        let mut decks = starter(vec![key_at(0, "ctrl+c"), key_at(7, "ctrl+v")]);
+        backfill_launcher(&mut decks, launcher());
+        assert_eq!(decks[0].pages[0].keys.last().unwrap().pos, 8);
+    }
 
     // Same predicate as layout_for: first profile whose `matches` shows up in "{app} {title}".
     fn profile_for<'a>(profiles: &'a [Profile], app: &str, title: &str) -> &'a str {
