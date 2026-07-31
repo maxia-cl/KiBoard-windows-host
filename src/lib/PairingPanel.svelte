@@ -2,7 +2,10 @@
   import { onMount, onDestroy } from "svelte";
   import { isTauri, pairingStatus, listDevices, revokeDevice, setPairingOpen } from "./pairing.js";
 
-  let { onclose } = $props();
+  // `firstRun` is set when the editor opened this panel by itself because nothing has ever paired
+  // (B1). Everything below is the same panel — what changes is that it explains the three steps
+  // instead of assuming the reader already knows them.
+  let { onclose, firstRun = false } = $props();
 
   let status = $state(null); // { hostId, pairingOpen, pending }
   let devices = $state([]);
@@ -47,9 +50,22 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="panel" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="header">
-      <span>Pairing &amp; devices</span>
+      <span>{firstRun ? "Connect your phone" : "Pairing & devices"}</span>
       <button class="close" onclick={onclose}>✕</button>
     </div>
+
+    {#if firstRun}
+      <ol class="steps">
+        <li>Install <b>KiBoard</b> on the phone and open it.</li>
+        <li>It lists this PC by itself. If the list stays empty — guest WiFi, some ISP routers —
+          type the address below instead.</li>
+        <li>The phone shows a six-digit code. It appears here too; they have to match.</li>
+      </ol>
+      <p class="hint">
+        Windows may ask whether KiBoard can use the network the first time. Say <b>yes</b>, for
+        private networks — the phone cannot find this PC otherwise.
+      </p>
+    {/if}
 
     {#if error}
       <p class="hint">{error}</p>
@@ -200,6 +216,15 @@
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
+  }
+  .steps {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .hint {
     font-size: 12px;

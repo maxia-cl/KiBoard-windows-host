@@ -8,6 +8,7 @@
   import DragGhost from "./lib/DragGhost.svelte";
   import Toast from "./lib/Toast.svelte";
   import PairingPanel from "./lib/PairingPanel.svelte";
+  import { listDevices } from "./lib/pairing.js";
   import { invoke } from "./lib/bridge.js";
   import {
     undo,
@@ -36,6 +37,7 @@
     stopPreview();
   }
   let showPairing = $state(false);
+  let firstRun = $state(false);
   let clients = $state(0);
   let loadError = $state(null);
 
@@ -61,6 +63,21 @@
 
   onMount(() => {
     init().catch((e) => (loadError = String(e)));
+
+    // B1. A PC with no phone paired to it does nothing at all, and the only way to pair is a ⚙ the
+    // reader has no reason to press. So the panel opens itself — once, on a host that has never
+    // paired anything. Revoking every device brings it back, which is right: that PC is useless
+    // again until something pairs.
+    listDevices()
+      .then((d) => {
+        if (d.length === 0) {
+          firstRun = true;
+          showPairing = true;
+        }
+      })
+      .catch(() => {
+        /* no backend (vite dev in a browser) — the panel says so itself */
+      });
 
     // The badge is the only honest way to know a save will be felt somewhere.
     const poll = setInterval(async () => {
@@ -165,7 +182,7 @@
   <DragGhost />
   <Toast />
   {#if showPairing}
-    <PairingPanel onclose={() => (showPairing = false)} />
+    <PairingPanel {firstRun} onclose={() => ((showPairing = false), (firstRun = false))} />
   {/if}
 </div>
 
