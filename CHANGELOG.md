@@ -9,7 +9,11 @@ Nothing here has been released yet — v2 has never been published, so the versi
 implementation phases, not release tags. The first release also needs its own signing key and its
 own version number (see "Releases and updates" in the README).
 
-## Unreleased — protocol `v0.3.0-f7`
+## 2.0.0 (unreleased) — protocol `v0.3.0-f7`
+
+The first version number of KiBoard 2. `0.1.29` was where v1's numbering stopped and it came
+across in the subtree port; the host and the phone app share `2.0.0` because `wss://` means they
+have to be installed together anyway.
 
 ### Breaking
 

@@ -9,7 +9,11 @@ Todavía no se ha publicado nada — v2 nunca salió, así que lo de abajo son l
 implementación, no tags de release. El primer release necesita además su propia clave de firma y su
 propio número de versión (ver "Publicación y actualizaciones" en el README).
 
-## Sin publicar — protocolo `v0.3.0-f7`
+## 2.0.0 (sin publicar) — protocolo `v0.3.0-f7`
+
+El primer número de versión de KiBoard 2. `0.1.29` era donde quedó la numeración de v1 y cruzó en el
+port con subtree; el host y la app del teléfono comparten `2.0.0` porque con `wss://` hay que
+instalarlos juntos de todos modos.
 
 ### Rompe compatibilidad
 

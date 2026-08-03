@@ -90,11 +90,20 @@ público porque el updater necesita un feed que pueda leer sin token. El endpoin
    ningún host instalado podrá volver a actualizarse nunca — no hay recuperación, solo reinstalar a
    mano.
 
-2. **La versión.** `0.1.29` es donde quedó la numeración de v1, heredada por el port con `git
-   subtree`. v2 debería empezar por su propio número, y el updater compara versiones, así que hay
-   que decidirlo antes de publicar nada.
+2. **Un token para el repo de releases.** `.github/workflows/release.yml` publica en
+   `KiBoard-windows-host-releases`, que es otro repositorio, y el `GITHUB_TOKEN` por defecto no
+   puede escribir ahí. Necesita un secreto `RELEASES_TOKEN` con permiso de escritura de contenidos
+   sobre ese repo.
 
-Hasta que las dos estén hechas el updater simplemente no encuentra nada, que es el fallo seguro. El
+El workflow compila con un tag `v*`, escribe `latest.json` —el feed que lee el updater— y abre el
+release como **borrador**, así que nada se hace público sin que alguien lo mire. Se niega a correr
+sin la clave de firma, en vez de publicar un bundle que ningún host instalado aceptaría.
+
+**La versión es `2.0.0`** en `Cargo.toml` y en `tauri.conf.json`, y la app del teléfono va igual.
+`0.1.29` era donde quedó la numeración de v1 y cruzó en el port con subtree; host y teléfono
+comparten número porque con `wss://` hay que instalarlos juntos de todos modos.
+
+Hasta que exista la clave el updater simplemente no encuentra nada, que es el fallo seguro. El
 endpoint apuntaba al feed de v1 — ese **no** era seguro: la firma coincidía, así que un host de v2
 podía haberse instalado v1 encima.
 

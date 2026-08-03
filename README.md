@@ -85,11 +85,19 @@ is public because the updater needs a feed it can read without a token. The upda
    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets of whatever builds the release. Losing them means
    no installed host can ever update again — there is no recovery path, only a manual reinstall.
 
-2. **The version.** `0.1.29` is where v1's numbering left off, inherited through the `git subtree`
-   port. v2 should start from its own number, and the updater compares versions, so this has to be
-   decided before anything is published.
+2. **A token for the releases repo.** `.github/workflows/release.yml` publishes into
+   `KiBoard-windows-host-releases`, a different repository, which the default `GITHUB_TOKEN` cannot
+   write to. It needs a `RELEASES_TOKEN` secret with contents write on that repo.
 
-Until both are done the updater simply finds nothing, which is the safe failure. The endpoint used
+The workflow builds on a `v*` tag, writes `latest.json` — the feed the updater reads — and opens the
+release as a **draft**, so nothing goes public until someone looks at it. It refuses to run at all
+without the signing key, rather than publishing a bundle no installed host would accept.
+
+**The version is `2.0.0`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
+`0.1.29` was where v1's numbering stopped and came across in the subtree port; host and phone share
+a number because `wss://` means they have to be installed together anyway.
+
+Until the key exists the updater simply finds nothing, which is the safe failure. The endpoint used
 to point at v1's feed — that one was **not** safe: the signature matched, so a v2 host could have
 installed v1 over itself.
 
