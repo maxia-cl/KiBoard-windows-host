@@ -116,7 +116,14 @@
 
 <div class="app">
   <header>
-    <span class="brand">KiBoard</span>
+    <!--
+      The same lockup the phone shows (its `Wordmark`): the brush mark tinted with the brand red,
+      then the rest of the word in a light sans with wide tracking. The two halves of KiBoard are
+      one product and have to be named the same way; this used to be "KiBoard" in bold system sans.
+      The mark is a white PNG, so CSS masks it and paints the accent through — no second, recoloured
+      copy of the file to keep in step.
+    -->
+    <span class="brand"><i class="mark" aria-hidden="true"></i><span class="word">board</span></span>
     <div class="tabs">
       <button class:active={mode === "auto"} onclick={leaveManual}>Auto</button>
       <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>Manual</button>
@@ -241,7 +248,22 @@
     color: var(--deck-color-text-primary);
   }
   .brand {
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .mark {
+    width: 26px;
+    height: 28px;
+    background: var(--deck-color-accent, #b22420);
+    mask: url(/mark.png) center / contain no-repeat;
+    -webkit-mask: url(/mark.png) center / contain no-repeat;
+  }
+  .word {
+    /* 22sp over a 34dp mark on the phone; 0.28 em is KiMouse's tracking. */
+    font-size: 17px;
+    font-weight: 300;
+    letter-spacing: 0.28em;
   }
   .tabs {
     display: flex;
