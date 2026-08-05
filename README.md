@@ -64,6 +64,43 @@ pairing funnel, and the QR half of the manual-address fallback (the phone has no
 
 41 tests, clippy clean.
 
+## Releases and updates
+
+Builds are published to
+[`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases), which
+is public because the updater needs a feed it can read without a token. The updater endpoint in
+`src-tauri/tauri.conf.json` points there.
+
+**Two things are still v1's and must be replaced before the first v2 release:**
+
+1. **The signing key.** `plugins.updater.pubkey` is still the key KiBoard v1 signs with. A v2
+   release signed with a v2 key would be rejected by it. Generate one, keep the private half out of
+   this repo, and paste the public half into `tauri.conf.json`:
+
+   ```bash
+   npx tauri signer generate -w kiboard2-updater.key
+   ```
+
+   The private key and its password become the `TAURI_SIGNING_PRIVATE_KEY` and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets of whatever builds the release. Losing them means
+   no installed host can ever update again — there is no recovery path, only a manual reinstall.
+
+2. **A token for the releases repo.** `.github/workflows/release.yml` publishes into
+   `KiBoard-windows-host-releases`, a different repository, which the default `GITHUB_TOKEN` cannot
+   write to. It needs a `RELEASES_TOKEN` secret with contents write on that repo.
+
+The workflow builds on a `v*` tag, writes `latest.json` — the feed the updater reads — and opens the
+release as a **draft**, so nothing goes public until someone looks at it. It refuses to run at all
+without the signing key, rather than publishing a bundle no installed host would accept.
+
+**The version is `2.0.0`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
+`0.1.29` was where v1's numbering stopped and came across in the subtree port; host and phone share
+a number because `wss://` means they have to be installed together anyway.
+
+Until the key exists the updater simply finds nothing, which is the safe failure. The endpoint used
+to point at v1's feed — that one was **not** safe: the signature matched, so a v2 host could have
+installed v1 over itself.
+
 ## Stack
 
 Tauri 2 + Rust, editor UI in Svelte 5 + Vite. Windows first; platform-specific code is isolated
