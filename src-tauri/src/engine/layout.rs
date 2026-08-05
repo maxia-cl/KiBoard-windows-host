@@ -203,7 +203,27 @@ pub async fn watch_active_app() {
     // two-state key whose truth is OBS's rather than ours. It gets its own fingerprint here, on
     // the timer that is already running, rather than a second one or a hook inside obs.rs.
     let mut last_live = String::new();
+    // Which apps are open. Nothing watched this: a manual deck was only re-sent when OBS changed,
+    // so a `launch:` key's `state.running` never updated and the phone's "opening…" spinner ran to
+    // its own timeout with the window already on screen. Same 500 ms poll, and the ids come from
+    // the decks a phone is actually showing — empty, and this costs nothing.
+    let mut last_apps = String::new();
     loop {
+        let ids = crate::net::ws::manual_app_ids();
+        if !ids.is_empty() {
+            let open = tokio::task::spawn_blocking({
+                let ids = ids.clone();
+                move || platform::apps::running(&ids)
+            })
+            .await
+            .unwrap_or_default();
+            let apps: String =
+                open.iter().map(|b| if *b { '1' } else { '0' }).collect();
+            if apps != last_apps {
+                last_apps = apps;
+                crate::net::ws::push_manual_layouts();
+            }
+        }
         let live = {
             let o = obs_state().lock().unwrap();
             format!(

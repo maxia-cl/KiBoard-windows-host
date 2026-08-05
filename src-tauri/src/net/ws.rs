@@ -59,6 +59,35 @@ pub fn push_manual_layouts() {
     let _ = decks_tx().send(());
 }
 
+/// Every app id a manual deck can currently show, for the watcher's running-apps fingerprint.
+///
+/// Empty when no phone is connected: enumerating windows twice a second to answer a question
+/// nobody is asking is the kind of poll that shows up in a battery report. The guard is "any
+/// client" rather than "any manual client" because sessions are per-connection state, and a
+/// counter for the finer question would have to be right on every disconnect path.
+pub fn manual_app_ids() -> Vec<String> {
+    if CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+        return Vec::new();
+    }
+    with_decks(|decks| {
+        let mut ids: Vec<String> = decks
+            .iter()
+            .flat_map(|d| d.pages.iter())
+            .flat_map(|p| p.keys.iter())
+            .filter_map(|k| {
+                let a = k.action.as_deref()?;
+                ["launch:", "focus:", "kill:"]
+                    .iter()
+                    .find_map(|v| a.strip_prefix(v))
+                    .map(|id| id.trim().to_string())
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    })
+}
+
 pub async fn run_ws_server() {
     let listener = match TcpListener::bind(("0.0.0.0", WS_PORT)).await {
         Ok(l) => l,
