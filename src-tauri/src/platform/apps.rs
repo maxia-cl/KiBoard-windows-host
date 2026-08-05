@@ -19,18 +19,52 @@ pub struct App {
 
 /// Does a window belong to app `id`, given the executable behind it and the AUMID it advertises?
 ///
-/// Pure, so it tests on any target. Two identities, because neither one covers both worlds:
-/// a packaged (UWP) app is only recognisable by its AUMID — every one of them runs behind
-/// `ApplicationFrameHost.exe` — while a desktop app usually advertises no AUMID at all and is
-/// matched by executable name.
+/// Pure, so it tests on any target. A desktop app is matched by executable name. A packaged (UWP)
+/// one has TWO shapes, and the second is why this was reporting apps as closed with their window
+/// open: the old kind runs behind `ApplicationFrameHost.exe` and advertises its AUMID, while a
+/// modern one (Notepad 11, WhatsApp, Claude) owns its window and advertises nothing — for those,
+/// the identity is the package family in the `WindowsApps` path.
 pub fn matches(id: &str, win_exe: &str, win_aumid: &str) -> bool {
     if id.is_empty() {
         return false;
     }
-    if id.contains('!') {
-        return !win_aumid.is_empty() && win_aumid.eq_ignore_ascii_case(id);
+    if let Some((family, _)) = id.split_once('!') {
+        // The AUMID when the window publishes one — the old shape, where a packaged app's window
+        // belongs to ApplicationFrameHost.exe and carries PKEY_AppUserModel_ID (Calculator still
+        // does this).
+        if !win_aumid.is_empty() {
+            return win_aumid.eq_ignore_ascii_case(id);
+        }
+        // Modern packaged apps own their window and publish NO AUMID at all: Notepad 11, WhatsApp
+        // and Claude all report an empty one. Their identity is still in the path — every one runs
+        // out of `WindowsApps\<name>_<version>_<arch>__<publisher>` — and name+publisher IS the
+        // package family, which is the half of the AUMID before the `!`. Matching that is not the
+        // executable-name guess this deliberately avoids: it is the same package, by identity.
+        //
+        // Without it `state.running` was false for every modern Store app with its window open, so
+        // `launch:` opened a second copy and `focus:`/`kill:` answered `not_running`.
+        return package_family(win_exe).is_some_and(|f| f.eq_ignore_ascii_case(family));
     }
     !win_exe.is_empty() && !stem(id).is_empty() && stem(id) == stem(win_exe)
+}
+
+/// `…\WindowsApps\Microsoft.WindowsNotepad_11.2605.34.0_x64__8wekyb3d8bbwe\Notepad.exe`
+/// -> `Microsoft.WindowsNotepad_8wekyb3d8bbwe`, the package family name. None for anything that
+/// does not live under `WindowsApps`.
+fn package_family(win_exe: &str) -> Option<String> {
+    let rest = win_exe
+        .split_once("\\WindowsApps\\")
+        .or_else(|| win_exe.split_once("/WindowsApps/"))?
+        .1;
+    let folder = rest.split(['\\', '/']).next()?;
+    let name = folder.split('_').next()?;
+    // The publisher id is last: the folder ends `..._<arch>__<publisher>`, and the empty piece
+    // between the double underscore is why this takes the last NON-EMPTY one.
+    let publisher = folder.rsplit('_').find(|p| !p.is_empty())?;
+    if name.is_empty() || publisher == name {
+        return None;
+    }
+    Some(format!("{name}_{publisher}"))
 }
 
 /// Lowercased file name without extension: `C:\W\System32\cleanmgr.exe` -> `cleanmgr`.
@@ -383,6 +417,32 @@ mod tests {
         assert!(!matches(id, "", ""));
     }
 
+
+    /// Real strings, read off this machine with Notepad, WhatsApp and Calculator open. Modern
+    /// packaged apps publish no AUMID on their window at all, which is why `state.running` said
+    /// false with the window right there.
+    #[test]
+    fn packaged_app_matches_by_package_family_when_the_window_has_no_aumid() {
+        let notepad = "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App";
+        let win = r"C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2605.34.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe";
+        assert!(matches(notepad, win, ""), "same package, no AUMID on the window");
+
+        // The old shape still wins when it is there: Calculator's window belongs to
+        // ApplicationFrameHost and carries the AUMID.
+        let calc = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+        assert!(matches(calc, r"C:\Windows\System32\ApplicationFrameHost.exe", calc));
+
+        // A different package of the same publisher must NOT match, and neither must a desktop app
+        // that merely happens to be called Notepad.
+        assert!(!matches(notepad, r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.0_x64__8wekyb3d8bbwe\Calc.exe", ""));
+        assert!(!matches(notepad, r"C:\Windows\System32\notepad.exe", ""));
+
+        // Double underscore before the publisher id, and a publisher that is not the last thing
+        // before it — the two shapes the folder name actually comes in.
+        let whats = "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App";
+        assert!(matches(whats, r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2629.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe", ""));
+    }
+
     #[test]
     fn absolute_path_matches_regardless_of_case_or_folder() {
         let id = r"C:\Program Files\Foo\Foo.exe";
@@ -433,3 +493,5 @@ mod tests {
         println!("kill   -> {:?}", super::close(&id));
     }
 }
+
+
