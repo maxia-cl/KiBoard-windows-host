@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { isTauri, pairingStatus, listDevices, revokeDevice, setPairingOpen } from "./pairing.js";
+  import { t } from "./i18n.js";
 
   // `firstRun` is set when the editor opened this panel by itself because nothing has ever paired
   // (B1). Everything below is the same panel — what changes is that it explains the three steps
@@ -9,7 +10,7 @@
 
   let status = $state(null); // { hostId, pairingOpen, pending }
   let devices = $state([]);
-  let error = $state(isTauri() ? null : "Only available inside the real KiBoard app (not vite dev in a browser).");
+  let error = $state(isTauri() ? null : t("pair.nohost"));
   let timer = null;
 
   async function refresh() {
@@ -50,34 +51,32 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="panel" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="header">
-      <span>{firstRun ? "Connect your phone" : "Pairing & devices"}</span>
+      <span>{firstRun ? t("pair.firstrun") : t("pairing.title")}</span>
       <button class="close" onclick={onclose}>✕</button>
     </div>
 
     {#if firstRun}
+      <!-- `{@html}` because these four carry a <b> that is part of the sentence. Safe: they come
+           from the static table in i18n.js, never from a device name or anything off the wire. -->
       <ol class="steps">
-        <li>Install <b>KiBoard</b> on the phone and open it.</li>
-        <li>It lists this PC by itself. If the list stays empty — guest WiFi, some ISP routers —
-          type the address below instead.</li>
-        <li>The phone shows a six-digit code. It appears here too; they have to match.</li>
+        <li>{@html t("pair.step1")}</li>
+        <li>{@html t("pair.step2")}</li>
+        <li>{@html t("pair.step3")}</li>
       </ol>
-      <p class="hint">
-        Windows may ask whether KiBoard can use the network the first time. Say <b>yes</b>, for
-        private networks — the phone cannot find this PC otherwise.
-      </p>
+      <p class="hint">{@html t("pair.firewall")}</p>
     {/if}
 
     {#if error}
       <p class="hint">{error}</p>
     {:else if !status}
-      <p class="hint">Loading…</p>
+      <p class="hint">{t("loading")}</p>
     {:else}
       <div class="row">
-        <span class="label">Host id</span>
+        <span class="label">{t("pair.hostid")}</span>
         <code>{status.hostId}</code>
       </div>
       <label class="row toggle">
-        <span class="label">Accept new pairings</span>
+        <span class="label">{t("pair.accept")}</span>
         <input type="checkbox" checked={status.pairingOpen} onchange={toggleOpen} />
       </label>
 
@@ -87,10 +86,10 @@
         to the code, instead of somewhere the user has to be told how to find.
       -->
       <div class="row">
-        <span class="label">Address</span>
+        <span class="label">{t("pair.address")}</span>
         <code>{status.ip}:{status.port}</code>
       </div>
-      <p class="hint">Type this on the phone if it cannot find this PC by itself.</p>
+      <p class="hint">{t("pair.addresshint")}</p>
 
       <!--
         §2.2. Only worth looking at when a paired phone starts refusing to connect: that is either
@@ -99,7 +98,7 @@
       -->
       {#if status.fingerprint}
         <div class="row">
-          <span class="label">Certificate</span>
+          <span class="label">{t("pair.certificate")}</span>
           <code class="fingerprint">{status.fingerprint.slice(0, 16)}…</code>
         </div>
       {/if}
@@ -108,15 +107,15 @@
         <div class="pending">
           <div class="code">{status.pending.code}</div>
           <div class="hint">
-            "{status.pending.device}" wants to connect — expires in {status.pending.expiresIn}s
+            {t("pair.wants", status.pending.device, status.pending.expiresIn)}
           </div>
         </div>
       {/if}
 
       <div class="devices">
-        <div class="devices-title">Paired devices</div>
+        <div class="devices-title">{t("pair.devices")}</div>
         {#if devices.length === 0}
-          <p class="hint">No devices paired yet.</p>
+          <p class="hint">{t("pair.nodevices")}</p>
         {/if}
         {#each devices as d (d.device_id)}
           <div class="device">
@@ -124,7 +123,7 @@
               <div class="device-name">{d.name}</div>
               <div class="hint">{d.platform}</div>
             </div>
-            <button class="revoke" onclick={() => revoke(d.device_id)}>Revoke</button>
+            <button class="revoke" onclick={() => revoke(d.device_id)}>{t("pair.revoke")}</button>
           </div>
         {/each}
       </div>

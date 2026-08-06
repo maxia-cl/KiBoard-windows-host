@@ -2,6 +2,7 @@
   import { getSelection, updateKeyFields, testKey, resolveScope } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
   import IconPicker from "./IconPicker.svelte";
+  import { t } from "./i18n.js";
 
   let { deckId } = $props();
 
@@ -72,19 +73,19 @@
     </div>
 
     <label>
-      Label
+      {t("insp.label")}
       <input value={key.label ?? ""} oninput={(e) => set("label", e.currentTarget.value)} />
     </label>
 
     <label>
-      Icon
+      {t("insp.icon")}
       <button class="icon-btn" onclick={() => (picking = "icon")}>
-        {iconGlyph(key.icon)} change…
+        {iconGlyph(key.icon)} {t("insp.change")}
       </button>
     </label>
 
     <label>
-      Image
+      {t("insp.image")}
       <div class="row">
         <input
           type="file"
@@ -92,19 +93,19 @@
           onchange={(e) => pickImage(e.currentTarget.files?.[0], (img) => set("image", img))}
         />
         {#if key.image}
-          <button class="icon-btn" onclick={() => set("image", null)} title="Back to the icon">✕</button>
+          <button class="icon-btn" onclick={() => set("image", null)} title={t("insp.backtoicon")}>✕</button>
         {/if}
       </div>
     </label>
 
     <label>
-      Colour
+      {t("insp.colour")}
       <input type="color" value={key.color ?? "#2C2C2E"} oninput={(e) => set("color", e.currentTarget.value)} />
     </label>
 
     {#if key.kind === "action"}
       <fieldset>
-        <legend>Short press</legend>
+        <legend>{t("insp.short")}</legend>
         {#each steps(key.action) as step, i}
           <div class="row">
             <input
@@ -113,19 +114,19 @@
               oninput={(e) => set("action", setStep(key.action, i, e.currentTarget.value))}
             />
             {#if steps(key.action).length > 1}
-              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title="Remove step">✕</button>
+              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title={t("insp.removestep")}>✕</button>
             {/if}
           </div>
         {/each}
-        <button class="add" onclick={() => set("action", `${key.action ?? ""} >> `)}>+ Add step</button>
+        <button class="add" onclick={() => set("action", `${key.action ?? ""} >> `)}>{t("insp.addstep")}</button>
       </fieldset>
 
       <label>
-        Long
+        {t("insp.long")}
         <input value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value)} />
       </label>
       <label>
-        Double
+        {t("insp.double")}
         <input value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value)} />
       </label>
 
@@ -135,21 +136,21 @@
           checked={!!key.toggle}
           onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)}
         />
-        Second state
+        {t("insp.second")}
       </label>
 
       {#if key.toggle}
         <fieldset>
-          <legend>When on</legend>
-          <p class="hint">A short press swaps to this face. Empty fields keep what is above.</p>
+          <legend>{t("insp.whenon")}</legend>
+          <p class="hint">{t("insp.facehint")}</p>
           <input
             value={key.toggle.label ?? ""}
-            placeholder="Label"
+            placeholder={t("insp.label")}
             oninput={(e) => setFace("label", e.currentTarget.value)}
           />
           <div class="row">
             <button class="icon-btn grow" onclick={() => (picking = "toggle-icon")}>
-              {iconGlyph(key.toggle.icon)} icon…
+              {iconGlyph(key.toggle.icon)} {t("insp.faceicon")}
             </button>
             <input
               type="color"
@@ -159,7 +160,7 @@
           </div>
           <input
             value={key.toggle.action ?? ""}
-            placeholder="Action (blank = the same one)"
+            placeholder={t("insp.faceaction")}
             oninput={(e) => setFace("action", e.currentTarget.value)}
           />
         </fieldset>
@@ -167,14 +168,14 @@
 
       <label class="checkbox">
         <input type="checkbox" checked={!!key.danger} onchange={(e) => set("danger", e.currentTarget.checked)} />
-        Ask to confirm
+        {t("insp.confirm")}
       </label>
-      <button class="test" onclick={() => testKey(key)}>▶ Test</button>
+      <button class="test" onclick={() => testKey(key)}>{t("insp.test")}</button>
     {:else if key.kind === "folder"}
-      <p class="hint">Folder — double-click it on the device to open and configure its contents.</p>
+      <p class="hint">{t("insp.folder")}</p>
     {/if}
   {:else}
-    <p class="hint">Select a key to edit it.</p>
+    <p class="hint">{t("insp.empty")}</p>
   {/if}
 </div>
 

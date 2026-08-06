@@ -22,6 +22,7 @@
   } from "./store.svelte.js";
   import { getDrag, startKeyDrag, onDragMove, endDrag } from "./dnd.svelte.js";
   import { AUTHORING_GRID, SCREEN } from "./model.js";
+  import { t } from "./i18n.js";
 
   let { deckId } = $props();
 
@@ -114,16 +115,16 @@
 {#if deck}
   <div class="stage">
     <div class="toolbar">
-      <span class="deck-name">Deck: {deck.name}</span>
+      <span class="deck-name">{t("device.deck", deck.name)}</span>
       <span class="page-count">
-        {#if screens > 1}screen {selection.screen + 1}/{screens}{/if}
+        {#if screens > 1}{t("device.screen", selection.screen + 1, screens)}{/if}
       </span>
     </div>
 
     {#if !isEntryPage()}
       <div class="folder-header">
-        <button onclick={() => exitPage()}>← Back</button>
-        <span>{page?.name || "Page"}</span>
+        <button onclick={() => exitPage()}>{t("device.back")}</button>
+        <span>{page?.name || t("device.page")}</span>
       </div>
     {/if}
 
@@ -156,7 +157,7 @@
               data-drop-screen-dot
               data-screen={i}
               onclick={() => selectScreen(i)}
-              aria-label={`Screen ${i + 1}`}
+              aria-label={t("device.screenN", i + 1)}
             ></button>
           {/each}
         </div>

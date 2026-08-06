@@ -2,6 +2,7 @@
   import { getCatalogue, assignToSelection } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
   import { startCatalogueDrag, onDragMove, endDrag } from "./dnd.svelte.js";
+  import { t } from "./i18n.js";
 
   let { deckId } = $props();
 
@@ -30,7 +31,7 @@
 </script>
 
 <div class="catalogue">
-  <input placeholder="🔍 search…" bind:value={query} />
+  <input placeholder={t("search")} bind:value={query} />
   {#each filteredGroups as group (group.id)}
     <details open>
       <summary>{group.label}</summary>
@@ -47,7 +48,7 @@
               assignToSelection(item);
             }
           }}
-          title="Enter assigns this to the selected key"
+          title={t("catalogue.enter")}
         >
           <span class="glyph">
             {#if item.image}

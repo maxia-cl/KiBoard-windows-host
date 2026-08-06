@@ -4,6 +4,7 @@
   import layoutPhotoshop from "../../KiBoard-protocol/protocol/fixtures/layout-auto-photoshop.json";
   import Key from "./Key.svelte";
   import { AUTHORING_GRID } from "./model.js";
+  import { t } from "./i18n.js";
 
   const PROFILES = [
     "Adobe Photoshop", "Adobe Illustrator", "Microsoft Excel", "Google Chrome",
@@ -18,7 +19,7 @@
 
 <div class="auto-tab">
   <div class="profile-list">
-    <input placeholder="🔍 search ~100 profiles…" bind:value={query} />
+    <input placeholder={t("auto.search")} bind:value={query} />
     {#each filtered as p (p.id)}
       <button class:active={p.id === selectedId} onclick={() => (selectedId = p.id)}>{p.name}</button>
     {/each}
@@ -32,10 +33,7 @@
       </div>
       <div class="logo">KiBoard</div>
     </div>
-    <p class="hint">
-      Read-only preview. Auto-mode profiles switch by themselves when the foreground app changes —
-      they aren't configured by dragging here, only browsed.
-    </p>
+    <p class="hint">{t("auto.hint")}</p>
   </div>
 </div>
 

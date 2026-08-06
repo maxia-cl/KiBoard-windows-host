@@ -10,6 +10,7 @@
   import PairingPanel from "./lib/PairingPanel.svelte";
   import { listDevices } from "./lib/pairing.js";
   import { invoke } from "./lib/bridge.js";
+  import { t } from "./lib/i18n.js";
   import {
     undo,
     redo,
@@ -57,7 +58,7 @@
     try {
       importDeck(JSON.parse(await file.text()));
     } catch {
-      showToast("That file is not valid JSON");
+      showToast(t("import.notjson"));
     }
   }
 
@@ -125,8 +126,8 @@
     -->
     <span class="brand"><i class="mark" aria-hidden="true"></i><span class="word">board</span></span>
     <div class="tabs">
-      <button class:active={mode === "auto"} onclick={leaveManual}>Auto</button>
-      <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>Manual</button>
+      <button class:active={mode === "auto"} onclick={leaveManual}>{t("tab.auto")}</button>
+      <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>{t("tab.manual")}</button>
     </div>
     {#if mode === "manual" && ready && deck}
       {#if decks.length > 1}
@@ -144,12 +145,12 @@
       <input
         class="deck-name"
         value={deck.name}
-        aria-label="Deck name"
+        aria-label={t("deck.name")}
         onchange={(e) => renameDeck(deck.id, e.currentTarget.value)}
       />
-      <button class="tool" onclick={() => duplicateDeck(deck.id)} title="Duplicate deck">⧉</button>
-      <button class="tool" onclick={() => exportSelectedDeck(deck.id)} title="Export deck to a file">↑</button>
-      <button class="tool" onclick={() => fileInput.click()} title="Import a deck file">↓</button>
+      <button class="tool" onclick={() => duplicateDeck(deck.id)} title={t("deck.duplicate")}>⧉</button>
+      <button class="tool" onclick={() => exportSelectedDeck(deck.id)} title={t("deck.export")}>↑</button>
+      <button class="tool" onclick={() => fileInput.click()} title={t("deck.import")}>↓</button>
       <input
         class="hidden-file"
         type="file"
@@ -161,20 +162,20 @@
     <span class="spacer"></span>
     {#if mode === "manual"}
       <button class="save" class:dirty={isDirty()} disabled={!isDirty()} onclick={() => save()}>
-        {isDirty() ? "Save changes" : "Saved"}
+        {isDirty() ? t("save.changes") : t("save.done")}
       </button>
     {/if}
-    <span class="connected">📱 {clients} connected</span>
-    <button class="settings" onclick={() => (showPairing = true)} aria-label="Pairing &amp; devices">⚙</button>
+    <span class="connected">📱 {t("connected", clients)}</span>
+    <button class="settings" onclick={() => (showPairing = true)} aria-label={t("pairing.title")}>⚙</button>
   </header>
 
   {#if mode === "manual"}
     {#if loadError}
-      <p class="load-state">Could not read the decks: {loadError}</p>
+      <p class="load-state">{t("load.error", loadError)}</p>
     {:else if !ready}
-      <p class="load-state">Reading your decks and apps…</p>
+      <p class="load-state">{t("load.reading")}</p>
     {:else if !selection.deckId}
-      <p class="load-state">No decks yet.</p>
+      <p class="load-state">{t("load.empty")}</p>
     {:else}
       <div class="columns">
         <Catalogue deckId={selection.deckId} />

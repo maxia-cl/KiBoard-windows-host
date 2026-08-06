@@ -122,6 +122,20 @@ fn host_status() -> serde_json::Value {
     })
 }
 
+/// The language the editor window should speak: this PC's, never the phone's.
+///
+/// Same source as the tray menu ([`i18n::host_lang`]), so the two halves of the host cannot end up
+/// in different languages. The strings themselves live in `src/lib/i18n.js` — they are Svelte's,
+/// and a table crossing this bridge would buy nothing.
+#[tauri::command]
+fn host_lang() -> &'static str {
+    match i18n::host_lang() {
+        i18n::Lang::En => "en",
+        i18n::Lang::Zh => "zh",
+        i18n::Lang::Es => "es",
+    }
+}
+
 #[tauri::command]
 fn set_analytics(on: bool) {
     let mut cfg = config().lock().unwrap();
@@ -408,6 +422,7 @@ pub fn run() {
             obs_info,
             set_obs_password,
             host_status,
+            host_lang,
             set_analytics,
             open_donate,
             test_action,
