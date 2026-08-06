@@ -1,38 +1,90 @@
 // i18n for the profile catalogue. The SPANISH label is the source of truth (that's how they're
 // written in default_profiles and in already-saved config.json files); this table translates it
-// on the fly in layout_for according to the locale the phone declared in its "hello". Labels not
-// in the table (profiles edited by the user) are shown as-is — user text is never translated.
+// on the fly according to the language ASKED FOR BY THE SESSION doing the rendering. Labels not in
+// the table (profiles edited by the user) are shown as-is — user text is never translated.
 
-use std::sync::atomic::{AtomicU8, Ordering};
-
-const ES: u8 = 0;
-const EN: u8 = 1;
-const ZH: u8 = 2;
-
-// ponytail: GLOBAL host locale (the last hello wins) — per-client only if two phones in
-// different languages ever connect at the same time.
-static LOCALE: AtomicU8 = AtomicU8::new(ES);
-
-pub fn set_locale(lang: &str) {
-    let l = if lang.starts_with("en") {
-        EN
-    } else if lang.starts_with("zh") {
-        ZH
-    } else {
-        ES
-    };
-    LOCALE.store(l, Ordering::Relaxed);
+/// Which language a render is for.
+///
+/// Per session, not global. It used to be one `AtomicU8` set by whichever phone said `hello` last,
+/// which meant a second phone in another language silently re-labelled the first one's deck. The
+/// value now rides with the session that asked for it, and the host's OWN interface uses
+/// [`host_lang`] — Windows' language, because that window belongs to the PC, not to the phone.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Lang {
+    #[default]
+    Es,
+    En,
+    Zh,
 }
 
-pub fn tr(label: &str) -> &str {
-    match LOCALE.load(Ordering::Relaxed) {
-        // ponytail: linear search over ~190 entries every 500ms — irrelevant; HashMap if the
-        // catalogue ever grows 10x.
-        EN => TABLE.iter().find(|e| e.0 == label).map(|e| e.1).unwrap_or(label),
-        ZH => TABLE.iter().find(|e| e.0 == label).map(|e| e.2).unwrap_or(label),
-        _ => label,
+/// `"en-GB"` -> [`Lang::En`]. Anything unknown is Spanish, which is the source language.
+pub fn lang_of(tag: &str) -> Lang {
+    if tag.starts_with("en") {
+        Lang::En
+    } else if tag.starts_with("zh") {
+        Lang::Zh
+    } else {
+        Lang::Es
     }
 }
+
+pub fn tr(lang: Lang, label: &str) -> &str {
+    match lang {
+        // ponytail: linear search over ~200 entries per layout — irrelevant; a HashMap if the
+        // catalogue ever grows 10x.
+        Lang::En => TABLE.iter().find(|e| e.0 == label).map(|e| e.1).unwrap_or(label),
+        Lang::Zh => TABLE.iter().find(|e| e.0 == label).map(|e| e.2).unwrap_or(label),
+        Lang::Es => label,
+    }
+}
+
+/// The language of THIS PC, for the host's own window and tray.
+///
+/// Read once from Windows. The phone's language never reaches here: a Spanish phone should not
+/// turn the PC's tray menu Spanish for whoever is sitting at it.
+#[cfg(windows)]
+pub fn host_lang() -> Lang {
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<Lang> = OnceLock::new();
+    *CACHED.get_or_init(|| {
+        // SAFETY: no arguments, no memory, returns a LANGID.
+        let id = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
+        // The primary language is the low 10 bits: 0x0A Spanish, 0x09 English, 0x04 Chinese.
+        match id & 0x3FF {
+            0x09 => Lang::En,
+            0x04 => Lang::Zh,
+            _ => Lang::Es,
+        }
+    })
+}
+
+#[cfg(not(windows))]
+pub fn host_lang() -> Lang {
+    Lang::Es
+}
+
+/// The host's own interface — tray menu today, the editor window when it gets a layer.
+///
+/// Separate from [`TABLE`] on purpose: that one translates the user's KEY LABELS, whose source is
+/// Spanish and whose language belongs to the phone. This one belongs to the PC.
+pub fn ui(key: &str) -> &'static str {
+    let lang = host_lang();
+    UI.iter()
+        .find(|e| e.0 == key)
+        .map(|e| match lang {
+            Lang::En => e.2,
+            Lang::Zh => e.3,
+            Lang::Es => e.1,
+        })
+        .unwrap_or("")
+}
+
+/// (key, es, en, zh-Hans)
+static UI: &[(&str, &str, &str, &str)] = &[
+    ("tray.open", "Abrir KiBoard…", "Open KiBoard…", "打开 KiBoard…"),
+    ("tray.unpair", "Desvincular todo", "Unpair everything", "解除所有配对"),
+    ("tray.quit", "Salir de KiBoard", "Quit KiBoard", "退出 KiBoard"),
+];
 
 /// (es, en, zh-Hans). Covers every label from default_profiles + OBS' dynamic ones.
 /// The test below fails if a new profile uses a label with no translation.
@@ -278,13 +330,17 @@ mod tests {
     }
 
     #[test]
-    fn tr_changes_by_locale() {
-        set_locale("en");
-        assert_eq!(tr("Copiar"), "Copy");
-        assert_eq!(tr("etiqueta custom del usuario"), "etiqueta custom del usuario");
-        set_locale("zh-Hans");
-        assert_eq!(tr("Copiar"), "复制");
-        set_locale("es");
-        assert_eq!(tr("Copiar"), "Copiar");
+    fn tr_answers_per_language_not_per_process() {
+        use super::{lang_of, Lang};
+        assert_eq!(tr(Lang::En, "Copiar"), "Copy");
+        assert_eq!(tr(Lang::Zh, "Copiar"), "复制");
+        assert_eq!(tr(Lang::Es, "Copiar"), "Copiar");
+        assert_eq!(tr(Lang::En, "etiqueta custom del usuario"), "etiqueta custom del usuario");
+
+        // Two sessions, two languages, at the same time — the thing a global could not do.
+        let (a, b) = (lang_of("en-GB"), lang_of("es-CL"));
+        assert_eq!((tr(a, "Copiar"), tr(b, "Copiar")), ("Copy", "Copiar"));
+        assert_eq!(lang_of("zh-Hans"), Lang::Zh);
+        assert_eq!(lang_of("pt-BR"), Lang::Es, "unknown falls back to the source language");
     }
 }

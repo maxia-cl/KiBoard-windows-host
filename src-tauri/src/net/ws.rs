@@ -32,7 +32,7 @@ fn current_layout() -> &'static Mutex<Option<AutoLayout>> {
 /// resolved one.
 fn auto_for(s: &Session) -> Option<String> {
     let cur = current_layout().lock().unwrap();
-    cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page))
+    cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page, s.lang))
 }
 
 /// Authenticated mobile clients right now (for the host UI's badge).
@@ -177,7 +177,7 @@ where
                     // A client in manual mode is looking at its own deck; auto mode's broadcast
                     // would yank the layout out from under it on the next foreground-app change.
                     if session.authed && !session.manual {
-                        let msg = auto_layout_json(&layout, session.grid, session.page);
+                        let msg = auto_layout_json(&layout, session.grid, session.page, session.lang);
                         if write.send(Message::text(msg)).await.is_err() { break; }
                     }
                 }
@@ -214,6 +214,8 @@ pub(crate) struct Session {
     pub(crate) authed: bool,
     /// Defaults to the reference 5×3 until `hello` says otherwise.
     pub(crate) grid: Grid,
+    /// The language THIS phone asked for in `hello` (§2). Per session on purpose.
+    pub(crate) lang: crate::i18n::Lang,
     pub(crate) manual: bool,
     pub(crate) deck_id: String,
     pub(crate) page_id: String,
@@ -267,7 +269,7 @@ fn manual_layout(s: &mut Session) -> Option<String> {
     let (deck_id, page_id, json) = with_decks(|decks| {
         let deck = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())?;
         let page = deck.page(&s.page_id).or_else(|| deck.pages.first())?;
-        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page)))
+        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page, s.lang)))
     })?;
     s.deck_id = deck_id;
     s.page_id = page_id;
@@ -460,15 +462,14 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                         val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
                         val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
                     );
-                    // Client's language: catalogue labels are served translated. The 500ms poll
-                    // re-broadcasts the layout on its own (the JSON changes when the locale changes).
+                    // The client's language, PER SESSION. It used to be one process-global set by
+                    // whoever said `hello` last, so a second phone in another language silently
+                    // re-labelled the first one's deck. Translation moved to render time — the
+                    // only point that knows which phone is being answered.
                     //
-                    // KNOWN LIMIT: the locale is process-global, so two phones in different
-                    // languages fight over it and the last to connect wins. Fixing it means
-                    // translating at render time per connection, the same move the grid needed —
-                    // `AutoLayout` would carry label keys instead of finished strings. Not worth it
-                    // until someone actually pairs two phones with different languages.
-                    crate::i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
+                    // The host's own window does not read this at all: it follows Windows
+                    // (`i18n::host_lang`), because that window belongs to the PC.
+                    s.lang = crate::i18n::lang_of(val["locale"].as_str().unwrap_or("es"));
                     let decks: Vec<_> = config()
                         .lock()
                         .unwrap()

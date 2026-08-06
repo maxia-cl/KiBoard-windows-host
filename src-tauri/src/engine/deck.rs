@@ -355,7 +355,13 @@ fn decorate_apps(keys: &mut [Key]) {
 }
 
 /// A `layout` message for one page of a deck (protocol/README.md §4.1).
-pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) -> String {
+pub(crate) fn layout_json(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: usize,
+    lang: crate::i18n::Lang,
+) -> String {
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
     let mut keys = keys_for(page, grid, at_page);
@@ -372,7 +378,7 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
     // right for a user's own label and for the OS-localized app names on the Launcher deck.
     for k in &mut keys {
         if !k.label.is_empty() {
-            k.label = crate::i18n::tr(&k.label).to_string();
+            k.label = crate::i18n::tr(lang, &k.label).to_string();
         }
     }
     json!({
@@ -591,7 +597,7 @@ mod tests {
         assert!(off.toggle.is_none());
 
         let grid = Grid::new(2, 3); // six per page, so pos 6 is the first key of client page 1
-        let off = layout_json(&deck, page, grid, 1);
+        let off = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es);
         assert!(off.contains("Mute") && !off.contains("Unmute"));
         assert!(off.contains("\"on\":false"));
         assert!(!off.contains("toggle"), "the spare face must not reach the phone");
@@ -602,12 +608,12 @@ mod tests {
         assert!(flip(&at));
         assert_eq!(showing_action(key, is_on(&at)), Some("vol:unmute"));
 
-        let on = layout_json(&deck, page, grid, 1);
+        let on = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es);
         assert!(on.contains("Unmute") && on.contains("\"on\":true"));
 
         // A phone with a different grid sees the SAME face: the address is absolute, so a
         // 1x7 client is not looking at a key that a 2x3 client flipped somewhere else.
-        let wide = layout_json(&deck, page, Grid::new(1, 7), 0);
+        let wide = layout_json(&deck, page, Grid::new(1, 7), 0, crate::i18n::Lang::Es);
         assert!(wide.contains("Unmute"));
         flip(&at);
     }

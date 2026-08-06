@@ -87,9 +87,9 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
                 ("obs:stream", Some(true)) => "Cortar directo",
                 _ => label.as_str(),
             };
-            // Translate to the client's language (hello carries the locale). Translated here, at
-            // the end, so it also covers OBS' dynamic labels.
-            let label = i18n::tr(label);
+            // NOT translated here. This layout is built once by the watcher and broadcast to
+            // every phone, so translating at build time meant one language for all of them —
+            // whichever said `hello` last. `auto_layout_json` does it per session instead.
             // A "picker:"'s option labels are translated too (each option's action travels
             // intact). Proper nouns (Opus, High...) fall back to themselves.
             let action_out = match action.strip_prefix("picker:") {
@@ -97,7 +97,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
                     let opts: Vec<String> = rest
                         .split(';')
                         .map(|part| match part.split_once('=') {
-                            Some((name, act)) => format!("{}={}", i18n::tr(name.trim()), act),
+                            Some((name, act)) => format!("{}={}", name.trim(), act),
                             None => part.to_string(),
                         })
                         .collect();
@@ -176,17 +176,34 @@ impl AutoLayout {
 }
 
 /// An auto-mode `layout` message for one page of the client's grid (protocol §4.1).
-pub fn auto_layout_json(a: &AutoLayout, grid: Grid, page: usize) -> String {
+pub fn auto_layout_json(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang) -> String {
     let pg = a.as_page();
     let pages = deck::pages(&pg, grid);
     let page = page.min(pages - 1);
+    // Translated HERE, once per session, because this is the only point that knows which phone is
+    // being answered. It also catches OBS' dynamic labels, which is why it used to sit at the end
+    // of `layout_for`.
+    let mut keys = deck::keys_for(&pg, grid, page);
+    for k in &mut keys {
+        k.label = i18n::tr(lang, &k.label).to_string();
+        if let Some(rest) = k.action.as_deref().and_then(|a| a.strip_prefix("picker:")) {
+            let opts: Vec<String> = rest
+                .split(';')
+                .map(|part| match part.split_once('=') {
+                    Some((name, act)) => format!("{}={}", i18n::tr(lang, name.trim()), act),
+                    None => part.to_string(),
+                })
+                .collect();
+            k.action = Some(format!("picker:{}", opts.join(";")));
+        }
+    }
     json!({
         "v": 2, "type": "layout", "mode": "auto",
         "source": { "kind": "profile", "id": a.profile_id,
                     "appName": a.app_name, "appIcon": a.app_icon },
         "grid": { "rows": grid.rows, "cols": grid.cols },
         "page": page, "pages": pages,
-        "keys": deck::keys_for(&pg, grid, page),
+        "keys": keys,
         "sys": a.sys,
     })
     .to_string()
@@ -260,7 +277,9 @@ pub async fn watch_active_app() {
         };
         // Rendered on the reference grid purely to detect change; every connection re-renders it
         // for its own grid on the way out.
-        let fingerprint = auto_layout_json(&layout, Grid::default(), 0);
+        // The fingerprint renders in the SOURCE language: it exists to notice that the layout
+        // changed, and it must not change just because a phone in another language connected.
+        let fingerprint = auto_layout_json(&layout, Grid::default(), 0, i18n::Lang::Es);
         if fingerprint != last_layout {
             last_layout = fingerprint;
             crate::net::ws::publish_layout(layout);

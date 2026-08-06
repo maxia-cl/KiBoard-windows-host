@@ -455,9 +455,9 @@ pub fn run() {
                 }
             });
 
-            let pair = MenuItem::with_id(app, "pair", "Abrir KiBoard…", true, None::<&str>)?;
-            let unpair = MenuItem::with_id(app, "unpair", "Desvincular todo", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Salir de KiBoard", true, None::<&str>)?;
+            let pair = MenuItem::with_id(app, "pair", crate::i18n::ui("tray.open"), true, None::<&str>)?;
+            let unpair = MenuItem::with_id(app, "unpair", crate::i18n::ui("tray.unpair"), true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", crate::i18n::ui("tray.quit"), true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&pair, &unpair, &quit])?;
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
