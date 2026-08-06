@@ -362,6 +362,35 @@ pub(crate) fn layout_json(
     at_page: usize,
     lang: crate::i18n::Lang,
 ) -> String {
+    render(deck, page, grid, at_page, lang, "layout")
+}
+
+/// One page either side of the one the client is on, as a §4.1 `page_preload`. `None` when there
+/// is no such page — nothing exists before page 0 or after the last.
+///
+/// Takes a SIGNED page so "the one before" is expressible without the caller checking first, and
+/// renders it without going near the session's page cursor. That is the whole point: the only way
+/// for a client to ASK for a page is `set_page`, which moves that cursor, and every push the host
+/// makes renders from it.
+pub(crate) fn preload_json(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: isize,
+    lang: crate::i18n::Lang,
+) -> Option<String> {
+    let at_page = usize::try_from(at_page).ok().filter(|&p| p < pages(page, grid))?;
+    Some(render(deck, page, grid, at_page, lang, "page_preload"))
+}
+
+fn render(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: usize,
+    lang: crate::i18n::Lang,
+    kind: &str,
+) -> String {
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
     let mut keys = keys_for(page, grid, at_page);
@@ -383,7 +412,7 @@ pub(crate) fn layout_json(
     }
     json!({
         "v": 2,
-        "type": "layout",
+        "type": kind,
         "mode": "manual",
         "source": { "kind": "deck", "id": deck.id, "name": deck.name, "page": page.id },
         "grid": { "rows": grid.rows, "cols": grid.cols },
@@ -412,6 +441,29 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    // §4.1 `page_preload`. What matters is the EDGES: there is nothing before page 0 or after the
+    // last, and asking for one must come back empty rather than clamping onto a page that is
+    // already on screen — the client would draw a copy of itself coming in behind the swipe.
+    #[test]
+    fn a_preload_exists_only_where_a_page_does() {
+        let p = page_of(15);
+        let g = Grid::new(2, 3); // 6 per page -> 3 pages
+        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let at = |n: isize| preload_json(&deck, &p, g, n, crate::i18n::Lang::Es);
+
+        assert!(at(-1).is_none(), "nothing before the first page");
+        assert!(at(3).is_none(), "nothing after the last");
+        assert!(at(0).is_some() && at(1).is_some() && at(2).is_some());
+
+        // It is the same body as a `layout` with a different type — that is what lets the client
+        // parse it with the code it already has.
+        let json = at(1).unwrap();
+        assert!(json.contains("\"type\":\"page_preload\""));
+        assert!(!json.contains("\"type\":\"layout\""));
+        assert!(json.contains("\"page\":1") && json.contains("\"pages\":3"));
+        assert!(json.contains("k6"), "page 1 of a 6-per-page grid starts at k6");
     }
 
     // A deck authored on 5x3 must survive being shown on a smaller grid: same keys, same order,

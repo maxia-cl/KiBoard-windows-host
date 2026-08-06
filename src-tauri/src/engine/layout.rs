@@ -177,6 +177,24 @@ impl AutoLayout {
 
 /// An auto-mode `layout` message for one page of the client's grid (protocol §4.1).
 pub fn auto_layout_json(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang) -> String {
+    render(a, grid, page, lang, "layout")
+}
+
+/// The auto-mode half of [`deck::preload_json`] — one page either side, or `None` if there is no
+/// such page. Auto mode paginates too: a profile with more keys than the grid holds has pages, and
+/// swiping them should look the same as swiping a deck's.
+pub fn auto_preload_json(
+    a: &AutoLayout,
+    grid: Grid,
+    page: isize,
+    lang: i18n::Lang,
+) -> Option<String> {
+    let total = deck::pages(&a.as_page(), grid);
+    let page = usize::try_from(page).ok().filter(|&p| p < total)?;
+    Some(render(a, grid, page, lang, "page_preload"))
+}
+
+fn render(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang, kind: &str) -> String {
     let pg = a.as_page();
     let pages = deck::pages(&pg, grid);
     let page = page.min(pages - 1);
@@ -198,7 +216,7 @@ pub fn auto_layout_json(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lan
         }
     }
     json!({
-        "v": 2, "type": "layout", "mode": "auto",
+        "v": 2, "type": kind, "mode": "auto",
         "source": { "kind": "profile", "id": a.profile_id,
                     "appName": a.app_name, "appIcon": a.app_icon },
         "grid": { "rows": grid.rows, "cols": grid.cols },

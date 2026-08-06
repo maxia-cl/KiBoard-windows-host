@@ -138,7 +138,9 @@ where
     let mut failed_auth = 0u32; // token/code brute-force brake
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
 
-    loop {
+    // Labelled because the preload sends below live in `for` loops, and a dead socket there has to
+    // end the connection, not just the loop it is in.
+    'conn: loop {
         tokio::select! {
             _ = keepalive.tick() => {
                 // Text ping (the phone ignores type=ping); keeps the connection alive.
@@ -163,12 +165,23 @@ where
                         break;
                     }
                 }
+                // `set_page`, `set_mode` and `set_grid` are all answered with a layout, and each of
+                // them lands the session somewhere with different neighbours.
+                let answered_with_layout = reply.contains("\"type\":\"layout\"");
                 if write.send(Message::text(reply)).await.is_err() { break; }
+                if answered_with_layout {
+                    for extra in preloads_for(&session) {
+                        if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                    }
+                }
                 if !was_authed && session.authed {
                     CLIENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     // Rendered for the grid this client just declared in `hello`.
                     if let Some(cur) = auto_for(&session) {
                         if write.send(Message::text(cur)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -179,6 +192,9 @@ where
                     if session.authed && !session.manual {
                         let msg = auto_layout_json(&layout, session.grid, session.page, session.lang);
                         if write.send(Message::text(msg)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -188,6 +204,9 @@ where
                 if saved.is_ok() && session.authed && session.manual {
                     if let Some(msg) = manual_layout(&mut session) {
                         if write.send(Message::text(msg)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -260,6 +279,38 @@ fn with_decks<T>(f: impl FnOnce(&[crate::config::Deck]) -> T) -> T {
     match preview.as_ref() {
         Some(decks) => f(decks),
         None => f(&config().lock().unwrap().decks),
+    }
+}
+
+/// §4.1 `page_preload`: the pages either side of the one this session is on, so a swipe on the
+/// phone has something to draw instead of an empty gap.
+///
+/// Rendered for THIS session's grid and page and sent unasked. One frame each — §4 caps a frame at
+/// 64 KB and a page may hold 48 KB of images on its own — and nothing at all when there is only one
+/// page, which is most profiles.
+fn preloads_for(s: &Session) -> Vec<String> {
+    let here = s.page as isize;
+    if s.manual {
+        with_decks(|decks| {
+            let Some(deck) = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())
+            else {
+                return Vec::new();
+            };
+            let Some(page) = deck.page(&s.page_id).or_else(|| deck.pages.first()) else {
+                return Vec::new();
+            };
+            [here - 1, here + 1]
+                .into_iter()
+                .filter_map(|at| deck::preload_json(deck, page, s.grid, at, s.lang))
+                .collect()
+        })
+    } else {
+        let cur = current_layout().lock().unwrap();
+        let Some(a) = cur.as_ref() else { return Vec::new() };
+        [here - 1, here + 1]
+            .into_iter()
+            .filter_map(|at| crate::engine::layout::auto_preload_json(a, s.grid, at, s.lang))
+            .collect()
     }
 }
 
@@ -646,9 +697,35 @@ mod tests {
         }]
     }
 
+    /// One deck, one page, `n` keys — enough to paginate on the default 5×3 grid once n > 15.
+    fn deck_of(n: usize) -> Vec<Deck> {
+        vec![Deck {
+            id: "d".into(),
+            name: "D".into(),
+            pages: vec![Page {
+                id: "p0".into(),
+                keys: (0..n)
+                    .map(|pos| Key {
+                        pos,
+                        label: format!("k{pos}"),
+                        action: Some("noop".into()),
+                        kind: KeyKind::Action,
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]
+    }
+
     fn session() -> Session {
         Session { authed: true, manual: true, deck_id: "d".into(), page_id: "p0".into(), ..Default::default() }
     }
+
+    /// The preview is process-global, and `cargo test` runs tests in parallel. Everything that
+    /// touches it takes this first, or the two tests below overwrite each other's fixture.
+    static PREVIEW_LOCK: Mutex<()> = Mutex::new(());
 
     /// The preview must own BOTH halves. If it only replaced what is drawn, the phone would show
     /// the unsaved deck while a press resolved against the saved one — the phone pressing position
@@ -656,6 +733,7 @@ mod tests {
     /// keys exist to make impossible, so it is worth a test rather than a comment.
     #[test]
     fn a_preview_owns_both_the_layout_and_the_press() {
+        let _guard = PREVIEW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_preview();
         set_preview(deck_saying("PREVIEW"));
 
@@ -676,5 +754,33 @@ mod tests {
             after.map(|l| !l.contains("PREVIEW")).unwrap_or(true),
             "the preview must not survive being cleared"
         );
+    }
+
+    /// §4.1 `page_preload`. What this guards is the SELECTION — one either side, nothing outside
+    /// the deck, and nothing at all when there is only one page. Sending a page that does not
+    /// exist would have the phone draw a copy of the page it is already on coming in behind the
+    /// swipe; sending them for a single-page profile would triple every push for nothing.
+    #[test]
+    fn preloads_are_the_two_neighbours_and_never_more() {
+        let _guard = PREVIEW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_preview();
+        set_preview(deck_of(20)); // 2 pages on the default 5x3 grid
+
+        let mut s = session();
+        let first = preloads_for(&s);
+        assert_eq!(first.len(), 1, "page 0 has nothing before it");
+        assert!(first[0].contains("\"type\":\"page_preload\""));
+        assert!(first[0].contains("\"page\":1"));
+
+        s.page = 1;
+        let last = preloads_for(&s);
+        assert_eq!(last.len(), 1, "the last page has nothing after it");
+        assert!(last[0].contains("\"page\":0"));
+
+        // A profile that fits on one page — most of them — costs nothing.
+        set_preview(deck_saying("ONE"));
+        assert!(preloads_for(&session()).is_empty());
+
+        clear_preview();
     }
 }
