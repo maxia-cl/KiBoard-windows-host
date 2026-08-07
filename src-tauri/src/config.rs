@@ -1441,7 +1441,7 @@ mod tests {
         let decks = default_decks();
         let d = decks.iter().find(|d| d.id == "launcher").expect("a launcher deck");
         let msg: serde_json::Value =
-            serde_json::from_str(&layout_json(d, &d.pages[0], Grid::new(3, 5), 0, crate::i18n::Lang::Es)).unwrap();
+            serde_json::from_str(&layout_json(d, &d.pages[0], Grid::new(3, 5), 0, crate::i18n::Lang::Es, None)).unwrap();
         for k in msg["keys"].as_array().unwrap() {
             println!(
                 "{:35} image {:>6} B  running={}",

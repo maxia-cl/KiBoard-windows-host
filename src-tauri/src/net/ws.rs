@@ -35,6 +35,16 @@ fn auto_for(s: &Session) -> Option<String> {
     cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page, s.lang))
 }
 
+/// What is in the foreground on the PC right now, for a MANUAL session (§4.1).
+///
+/// The 500 ms watcher keeps `current_layout` fresh whatever mode a phone is in, so this costs
+/// nothing to answer — auto mode was simply the only thing that ever asked. A manual deck follows
+/// nothing, which is exactly why the phone needs telling what it is pressing keys at.
+fn foreground_app() -> Option<(String, String)> {
+    let cur = current_layout().lock().unwrap();
+    cur.as_ref().map(|a| (a.app_name.clone(), a.app_icon.clone()))
+}
+
 /// Authenticated mobile clients right now (for the host UI's badge).
 pub static CLIENTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -299,9 +309,11 @@ fn preloads_for(s: &Session) -> Vec<String> {
             let Some(page) = deck.page(&s.page_id).or_else(|| deck.pages.first()) else {
                 return Vec::new();
             };
+            let app = foreground_app();
+            let app = app.as_ref().map(|(n, i)| (n.as_str(), i.as_str()));
             [here - 1, here + 1]
                 .into_iter()
-                .filter_map(|at| deck::preload_json(deck, page, s.grid, at, s.lang))
+                .filter_map(|at| deck::preload_json(deck, page, s.grid, at, s.lang, app))
                 .collect()
         })
     } else {
@@ -320,7 +332,9 @@ fn manual_layout(s: &mut Session) -> Option<String> {
     let (deck_id, page_id, json) = with_decks(|decks| {
         let deck = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())?;
         let page = deck.page(&s.page_id).or_else(|| deck.pages.first())?;
-        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page, s.lang)))
+        let app = foreground_app();
+        let app = app.as_ref().map(|(n, i)| (n.as_str(), i.as_str()));
+        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page, s.lang, app)))
     })?;
     s.deck_id = deck_id;
     s.page_id = page_id;

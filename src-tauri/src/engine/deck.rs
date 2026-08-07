@@ -361,8 +361,9 @@ pub(crate) fn layout_json(
     grid: Grid,
     at_page: usize,
     lang: crate::i18n::Lang,
+    app: Option<(&str, &str)>,
 ) -> String {
-    render(deck, page, grid, at_page, lang, "layout")
+    render(deck, page, grid, at_page, lang, "layout", app)
 }
 
 /// One page either side of the one the client is on, as a §4.1 `page_preload`. `None` when there
@@ -378,9 +379,10 @@ pub(crate) fn preload_json(
     grid: Grid,
     at_page: isize,
     lang: crate::i18n::Lang,
+    app: Option<(&str, &str)>,
 ) -> Option<String> {
     let at_page = usize::try_from(at_page).ok().filter(|&p| p < pages(page, grid))?;
-    Some(render(deck, page, grid, at_page, lang, "page_preload"))
+    Some(render(deck, page, grid, at_page, lang, "page_preload", app))
 }
 
 fn render(
@@ -390,6 +392,7 @@ fn render(
     at_page: usize,
     lang: crate::i18n::Lang,
     kind: &str,
+    app: Option<(&str, &str)>,
 ) -> String {
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
@@ -414,7 +417,14 @@ fn render(
         "v": 2,
         "type": kind,
         "mode": "manual",
-        "source": { "kind": "deck", "id": deck.id, "name": deck.name, "page": page.id },
+        // §4.1: a manual deck follows nothing, but the PC still has something in front of it, and
+        // the phone had no way to know what it was pressing keys at. Same two fields auto mode has
+        // always carried, meaning the same thing.
+        "source": {
+            "kind": "deck", "id": deck.id, "name": deck.name, "page": page.id,
+            "appName": app.map(|(name, _)| name),
+            "appIcon": app.map(|(_, icon)| icon),
+        },
         "grid": { "rows": grid.rows, "cols": grid.cols },
         "page": at_page,
         "pages": total,
@@ -451,7 +461,7 @@ mod tests {
         let p = page_of(15);
         let g = Grid::new(2, 3); // 6 per page -> 3 pages
         let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
-        let at = |n: isize| preload_json(&deck, &p, g, n, crate::i18n::Lang::Es);
+        let at = |n: isize| preload_json(&deck, &p, g, n, crate::i18n::Lang::Es, None);
 
         assert!(at(-1).is_none(), "nothing before the first page");
         assert!(at(3).is_none(), "nothing after the last");
@@ -464,6 +474,25 @@ mod tests {
         assert!(!json.contains("\"type\":\"layout\""));
         assert!(json.contains("\"page\":1") && json.contains("\"pages\":3"));
         assert!(json.contains("k6"), "page 1 of a 6-per-page grid starts at k6");
+    }
+
+    // §4.1: a manual deck follows nothing, but the PC still has something in front of it. Auto
+    // mode has carried these two fields since v1; this is the same pair meaning the same thing,
+    // and a client that ignores them loses nothing — which is why `v` did not move.
+    #[test]
+    fn a_manual_layout_can_name_the_app_in_front() {
+        let p = page_of(3);
+        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let grid = Grid::new(3, 5);
+
+        let named = layout_json(&deck, &p, grid, 0, crate::i18n::Lang::Es, Some(("Photoshop", "data:x")));
+        assert!(named.contains("\"appName\":\"Photoshop\""));
+        assert!(named.contains("\"appIcon\":\"data:x\""));
+
+        // And nothing in front — or a host that has not resolved one yet — says so explicitly
+        // rather than inventing a name.
+        let bare = layout_json(&deck, &p, grid, 0, crate::i18n::Lang::Es, None);
+        assert!(bare.contains("\"appName\":null"));
     }
 
     // A deck authored on 5x3 must survive being shown on a smaller grid: same keys, same order,
@@ -649,7 +678,7 @@ mod tests {
         assert!(off.toggle.is_none());
 
         let grid = Grid::new(2, 3); // six per page, so pos 6 is the first key of client page 1
-        let off = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es);
+        let off = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es, None);
         assert!(off.contains("Mute") && !off.contains("Unmute"));
         assert!(off.contains("\"on\":false"));
         assert!(!off.contains("toggle"), "the spare face must not reach the phone");
@@ -660,12 +689,12 @@ mod tests {
         assert!(flip(&at));
         assert_eq!(showing_action(key, is_on(&at)), Some("vol:unmute"));
 
-        let on = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es);
+        let on = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es, None);
         assert!(on.contains("Unmute") && on.contains("\"on\":true"));
 
         // A phone with a different grid sees the SAME face: the address is absolute, so a
         // 1x7 client is not looking at a key that a 2x3 client flipped somewhere else.
-        let wide = layout_json(&deck, page, Grid::new(1, 7), 0, crate::i18n::Lang::Es);
+        let wide = layout_json(&deck, page, Grid::new(1, 7), 0, crate::i18n::Lang::Es, None);
         assert!(wide.contains("Unmute"));
         flip(&at);
     }
