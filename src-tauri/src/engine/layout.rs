@@ -163,6 +163,9 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
 pub struct AutoLayout {
     pub profile_id: String,
     pub app_name: String,
+    /// BARE base64 PNG — `extract_icon_b64` strips any prefix. Use [`AutoLayout::app_icon_uri`] to
+    /// put it on the wire: §4.1 documents `appIcon` as a data URI, and every other image the
+    /// protocol carries is one, so a consumer that decodes key images decodes this too.
     pub app_icon: String,
     pub keys: Vec<Key>,
     pub sys: serde_json::Value,
@@ -172,6 +175,21 @@ impl AutoLayout {
     /// Same page/key addressing as a deck, so `key` presses resolve identically in both modes.
     pub(crate) fn as_page(&self) -> Page {
         Page { id: self.profile_id.clone(), name: String::new(), keys: self.keys.clone() }
+    }
+}
+
+impl AutoLayout {
+    /// The foreground app's icon as §4.1 promises it: a data URI, or `None` when there is no icon
+    /// (an app whose executable has none, or a window the host could not resolve).
+    ///
+    /// The host was sending the bare base64 the extractor returns, so a client that decoded it the
+    /// same way it decodes every other image got nothing — the contract said `data:image/png;…`
+    /// and the wire did not.
+    pub fn app_icon_uri(&self) -> Option<String> {
+        if self.app_icon.is_empty() {
+            return None;
+        }
+        Some(format!("data:image/png;base64,{}", self.app_icon))
     }
 }
 
@@ -218,7 +236,7 @@ fn render(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang, kind: &str)
     json!({
         "v": 2, "type": kind, "mode": "auto",
         "source": { "kind": "profile", "id": a.profile_id,
-                    "appName": a.app_name, "appIcon": a.app_icon },
+                    "appName": a.app_name, "appIcon": a.app_icon_uri() },
         "grid": { "rows": grid.rows, "cols": grid.cols },
         "page": page, "pages": pages,
         "keys": keys,

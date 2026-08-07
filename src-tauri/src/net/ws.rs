@@ -35,6 +35,19 @@ fn auto_for(s: &Session) -> Option<String> {
     cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page, s.lang))
 }
 
+/// The grid a client declared, from `hello` or `set_grid` (§4.1). Untrusted — it arrives before the
+/// token is checked, and `Grid` clamps every field for exactly that reason.
+///
+/// `reserve` is the client saying "these cells at the end of each page are mine". Absent means 0,
+/// which is what every client sent before it existed.
+fn read_grid(val: &serde_json::Value) -> Grid {
+    Grid::new(
+        val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
+        val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
+    )
+    .reserving(val["grid"]["reserve"].as_u64().unwrap_or(0) as usize)
+}
+
 /// What is in the foreground on the PC right now, for a MANUAL session (§4.1).
 ///
 /// The 500 ms watcher keeps `current_layout` fresh whatever mode a phone is in, so this costs
@@ -42,7 +55,7 @@ fn auto_for(s: &Session) -> Option<String> {
 /// nothing, which is exactly why the phone needs telling what it is pressing keys at.
 fn foreground_app() -> Option<(String, String)> {
     let cur = current_layout().lock().unwrap();
-    cur.as_ref().map(|a| (a.app_name.clone(), a.app_icon.clone()))
+    cur.as_ref().map(|a| (a.app_name.clone(), a.app_icon_uri().unwrap_or_default()))
 }
 
 /// Authenticated mobile clients right now (for the host UI's badge).
@@ -523,10 +536,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 Ok(()) => {
                     s.authed = true;
                     // 🆕 the client declares its grid; the host paginates every deck to it.
-                    s.grid = Grid::new(
-                        val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
-                        val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
-                    );
+                    s.grid = read_grid(&val);
                     // The client's language, PER SESSION. It used to be one process-global set by
                     // whoever said `hello` last, so a second phone in another language silently
                     // re-labelled the first one's deck. Translation moved to render time — the
@@ -635,10 +645,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             if !s.authed {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
-            s.grid = Grid::new(
-                val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
-                val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
-            );
+            s.grid = read_grid(&val);
             // The page index is an index into the OLD pagination; a wider grid means fewer pages,
             // so keeping it could land the client past the end.
             s.page = 0;

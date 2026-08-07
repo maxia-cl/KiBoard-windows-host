@@ -77,6 +77,8 @@ pub fn windows_json(grid: Grid, page: usize) -> String {
         let ids = mru().lock().unwrap().clone();
         order(platform::list_windows(), &ids, current)
     };
+    // The full grid on purpose: the switcher is its own surface and draws nothing of its own
+    // in the reserved cells, so leaving two holes there would just look like a bug.
     let size = grid.size();
     let pages = ordered.len().div_ceil(size).max(1);
     let page = page.min(pages - 1);

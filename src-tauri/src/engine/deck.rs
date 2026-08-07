@@ -160,6 +160,9 @@ fn set_state(key: &mut Key, field: &str, value: serde_json::Value) {
 pub(crate) struct Grid {
     pub(crate) rows: usize,
     pub(crate) cols: usize,
+    /// Cells at the END of every page the CLIENT keeps for itself (§4.1 `grid.reserve`). The phone
+    /// draws the foreground app there, so the host must not paginate keys into them.
+    pub(crate) reserve: usize,
 }
 
 impl Grid {
@@ -167,17 +170,32 @@ impl Grid {
     /// checked, and `rows * cols` sizes every allocation below. 0 would divide by zero and 10000
     /// would let one frame ask for a 100M-key layout, so both ends are clamped.
     pub(crate) fn new(rows: usize, cols: usize) -> Grid {
-        Grid { rows: rows.clamp(1, MAX_SIDE), cols: cols.clamp(1, MAX_SIDE) }
+        Grid { rows: rows.clamp(1, MAX_SIDE), cols: cols.clamp(1, MAX_SIDE), reserve: 0 }
     }
+
+    /// Same grid, with `n` cells at the end left to the client. Clamped so a client cannot ask for
+    /// a page with no keys on it at all — `reserve` arrives from `hello`, before the token is
+    /// checked, like every other field of the grid.
+    pub(crate) fn reserving(self, n: usize) -> Grid {
+        Grid { reserve: n.min(self.size().saturating_sub(1)), ..self }
+    }
+
+    /// Every cell, including the reserved ones. What the client DRAWS.
     pub(crate) fn size(self) -> usize {
         self.rows * self.cols
+    }
+
+    /// Cells the host may put keys in. What pagination and addressing run on — the two must agree,
+    /// or a press at position 12 would resolve against a page cut at 15.
+    pub(crate) fn usable(self) -> usize {
+        self.size().saturating_sub(self.reserve).max(1)
     }
 }
 
 impl Default for Grid {
     /// The reference device, used when a client omits `grid`.
     fn default() -> Grid {
-        Grid { rows: 3, cols: 5 }
+        Grid { rows: 3, cols: 5, reserve: 0 }
     }
 }
 
@@ -208,7 +226,7 @@ fn dense(page: &Page) -> Vec<Key> {
 /// Total pages this deck page needs on `grid`. Always at least 1, so an empty deck still renders
 /// (as an empty grid) instead of leaving the phone with nothing to draw.
 pub(crate) fn pages(page: &Page, grid: Grid) -> usize {
-    dense(page).len().div_ceil(grid.size()).max(1)
+    dense(page).len().div_ceil(grid.usable()).max(1)
 }
 
 /// The keys for one page of `grid`, re-addressed to that page: `pos` comes back as 0..grid.size(),
@@ -216,7 +234,7 @@ pub(crate) fn pages(page: &Page, grid: Grid) -> usize {
 /// empties so the client always receives a full grid.
 pub(crate) fn keys_for(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
     let all = dense(page);
-    let size = grid.size();
+    let size = grid.usable();
     let start = want * size;
     (0..size)
         .map(|i| match all.get(start + i) {
@@ -239,10 +257,10 @@ pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Op
 /// The key's absolute address in the page behind a (client page, client pos) pair. Grid-dependent
 /// going in, grid-independent coming out — which is what makes it usable as a toggle's identity.
 pub(crate) fn flat(grid: Grid, at_page: usize, pos: usize) -> Option<usize> {
-    if pos >= grid.size() {
+    if pos >= grid.usable() {
         return None;
     }
-    at_page.checked_mul(grid.size())?.checked_add(pos)
+    at_page.checked_mul(grid.usable())?.checked_add(pos)
 }
 
 /// Rejects decks the phone could not render or resolve. The editor is not the only writer —
@@ -400,7 +418,7 @@ fn render(
     // Faces first: `decorate_apps` looks at `action`, so a toggle whose ON face launches a
     // different app has to have swapped it in before the icon and the running dot are attached.
     for (i, key) in keys.iter_mut().enumerate() {
-        let at = addr(&deck.id, &page.id, at_page * grid.size() + i);
+        let at = addr(&deck.id, &page.id, at_page * grid.usable() + i);
         let on = face_is_on(key, &at);
         wear_face(key, on);
     }
