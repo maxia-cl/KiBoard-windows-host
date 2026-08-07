@@ -497,6 +497,26 @@ mod tests {
     // §4.1: a manual deck follows nothing, but the PC still has something in front of it. Auto
     // mode has carried these two fields since v1; this is the same pair meaning the same thing,
     // and a client that ignores them loses nothing — which is why `v` did not move.
+    // §4.1 `grid.reserve`: the client keeps the last cells of every page, so pagination and
+    // addressing must both shrink. If only one of them did, a press would resolve against a page
+    // cut differently from the one that was drawn.
+    #[test]
+    fn reserve_shrinks_the_page_and_the_addressing_together() {
+        let p = page_of(20);
+        let g = Grid::new(3, 5).reserving(2);
+        assert_eq!(g.size(), 15, "the client still DRAWS fifteen cells");
+        assert_eq!(g.usable(), 13);
+
+        let first = keys_for(&p, g, 0);
+        assert_eq!(first.len(), 13, "a page must not fill the reserved cells");
+        assert_eq!(first[12].label, "k12");
+
+        assert_eq!(pages(&p, g), 2, "20 keys at 13 a page");
+        let second = keys_for(&p, g, 1);
+        assert_eq!(second[0].label, "k13", "page 2 starts where page 1 stopped");
+        assert_eq!(resolve(&p, g, 1, 0).map(|k| k.label.as_str()), Some("k13"));
+    }
+
     #[test]
     fn a_manual_layout_can_name_the_app_in_front() {
         let p = page_of(3);
