@@ -141,6 +141,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     // onto later pages instead of pushing useful keys off the first screen. Stable: within each
     // group the catalogue's authored order is kept.
     buttons.sort_by_key(|(rec, _)| !rec);
+    pin_close_app(&mut buttons);
     let keys = buttons
         .into_iter()
         .enumerate()
@@ -152,6 +153,33 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
         .map(|(vol, muted)| json!({ "vol": vol, "muted": muted }))
         .unwrap_or(serde_json::Value::Null);
     AutoLayout { profile_id, app_name: app.to_string(), app_icon: icon_b64.to_string(), keys, sys }
+}
+
+/// The one key that sits in the same cell on every profile: **third of the first row**, page 0.
+///
+/// Every one of the ~100 profiles carries "Cerrar app", and the recommended-first sort left it
+/// wherever the profile's own list happened to put it — third on two profiles, tenth on another.
+/// A key you reach for without looking has to be in the same place every time, and this one is
+/// `danger` as well: hunting for it is how you close the wrong thing.
+///
+/// Pinning the POSITION is enough for both orientations: the grid transposes (5×3 upright, 3×5
+/// sideways) but the addressing does not, so cell 2 is the third of the first row either way.
+fn pin_close_app(buttons: &mut Vec<(bool, Key)>) {
+    /// Identified by its ACTION, not its label: the label is translated at render time, and the
+    /// editor lets a user rename the key without it stopping being the close key.
+    const CLOSE_APP: &str = "alt+F4";
+    const CLOSE_AT: usize = 2;
+    let Some(at) =
+        buttons.iter().position(|(_, k)| {
+            k.action.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(CLOSE_APP))
+        })
+    else {
+        return;
+    };
+    let key = buttons.remove(at);
+    // A profile with fewer keys than that puts it last rather than leaving a hole before it.
+    let at = CLOSE_AT.min(buttons.len());
+    buttons.insert(at, key);
 }
 
 /// The resolved auto-mode layout, before pagination.
@@ -245,6 +273,65 @@ fn render(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang, kind: &str)
     .to_string()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn button(label: &str, action: &str, rec: bool) -> (bool, Key) {
+        (
+            rec,
+            Key {
+                label: label.into(),
+                action: Some(action.into()),
+                kind: KeyKind::Action,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn labels(buttons: &[(bool, Key)]) -> Vec<&str> {
+        buttons.iter().map(|(_, k)| k.label.as_str()).collect()
+    }
+
+    #[test]
+    fn close_app_lands_on_the_third_cell_whatever_the_profile_says() {
+        // The real shape: "Cerrar app" authored last but recommended, so the sort puts it fifth.
+        let mut b = vec![
+            button("Copiar", "ctrl+c", true),
+            button("Pegar", "ctrl+v", true),
+            button("Nueva carpeta", "ctrl+shift+n", true),
+            button("Renombrar", "f2", true),
+            button("Cerrar app", "alt+F4", true),
+            button("Cortar", "ctrl+x", false),
+        ];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b), ["Copiar", "Pegar", "Cerrar app", "Nueva carpeta", "Renombrar", "Cortar"]);
+        // Idempotent: it is already there, and re-pinning must not rotate the pad every 500 ms.
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b)[2], "Cerrar app");
+    }
+
+    /// The editor writes whatever the user typed, and `alt+f4` is the same key.
+    #[test]
+    fn the_action_is_matched_however_it_was_typed() {
+        let mut b = vec![button("a", "ctrl+c", true), button("Cerrar", "alt+f4", false)];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b)[1], "Cerrar", "two keys: last is as close to third as it gets");
+    }
+
+    /// A profile with no close key at all (and one whose `uia:` keys were all filtered out) must
+    /// come back unchanged rather than shuffled.
+    #[test]
+    fn a_profile_without_one_is_left_alone() {
+        let mut b = vec![button("a", "ctrl+c", true), button("b", "ctrl+v", true)];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b), ["a", "b"]);
+        let mut empty: Vec<(bool, Key)> = vec![];
+        pin_close_app(&mut empty);
+        assert!(empty.is_empty());
+    }
+}
+
 /// Polls the foreground app and publishes the layout when it changes (app change or profile edit).
 pub async fn watch_active_app() {
     let mut last_app = String::new();
@@ -319,6 +406,11 @@ pub async fn watch_active_app() {
         if fingerprint != last_layout {
             last_layout = fingerprint;
             crate::net::ws::publish_layout(layout);
+            // §4.1: a MANUAL deck carries what the PC has in front too, and the foreground changing
+            // is the only thing that can change it. Nothing re-sent it — a phone sitting on a deck
+            // kept the app it was opened next to, for hours, which reads as the whole surface
+            // having stopped updating.
+            crate::net::ws::push_manual_layouts();
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
