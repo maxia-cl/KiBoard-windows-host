@@ -287,7 +287,7 @@ mod tests {
             Some("type:/model>>wait:400>>type: claude-opus-5"),
             "the value is a whole chain, `=` splits once"
         );
-        assert_eq!(choose(a, Some(0), None).unwrap().starts_with("type:/model"), true);
+        assert!(choose(a, Some(0), None).unwrap().starts_with("type:/model"));
         // No choice, or one that names no branch: nothing to run.
         assert_eq!(choose(a, None, None), None);
         assert_eq!(choose(a, Some(9), None), None);

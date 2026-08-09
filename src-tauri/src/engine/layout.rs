@@ -273,65 +273,6 @@ fn render(a: &AutoLayout, grid: Grid, page: usize, lang: i18n::Lang, kind: &str)
     .to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn button(label: &str, action: &str, rec: bool) -> (bool, Key) {
-        (
-            rec,
-            Key {
-                label: label.into(),
-                action: Some(action.into()),
-                kind: KeyKind::Action,
-                ..Default::default()
-            },
-        )
-    }
-
-    fn labels(buttons: &[(bool, Key)]) -> Vec<&str> {
-        buttons.iter().map(|(_, k)| k.label.as_str()).collect()
-    }
-
-    #[test]
-    fn close_app_lands_on_the_third_cell_whatever_the_profile_says() {
-        // The real shape: "Cerrar app" authored last but recommended, so the sort puts it fifth.
-        let mut b = vec![
-            button("Copiar", "ctrl+c", true),
-            button("Pegar", "ctrl+v", true),
-            button("Nueva carpeta", "ctrl+shift+n", true),
-            button("Renombrar", "f2", true),
-            button("Cerrar app", "alt+F4", true),
-            button("Cortar", "ctrl+x", false),
-        ];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b), ["Copiar", "Pegar", "Cerrar app", "Nueva carpeta", "Renombrar", "Cortar"]);
-        // Idempotent: it is already there, and re-pinning must not rotate the pad every 500 ms.
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b)[2], "Cerrar app");
-    }
-
-    /// The editor writes whatever the user typed, and `alt+f4` is the same key.
-    #[test]
-    fn the_action_is_matched_however_it_was_typed() {
-        let mut b = vec![button("a", "ctrl+c", true), button("Cerrar", "alt+f4", false)];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b)[1], "Cerrar", "two keys: last is as close to third as it gets");
-    }
-
-    /// A profile with no close key at all (and one whose `uia:` keys were all filtered out) must
-    /// come back unchanged rather than shuffled.
-    #[test]
-    fn a_profile_without_one_is_left_alone() {
-        let mut b = vec![button("a", "ctrl+c", true), button("b", "ctrl+v", true)];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b), ["a", "b"]);
-        let mut empty: Vec<(bool, Key)> = vec![];
-        pin_close_app(&mut empty);
-        assert!(empty.is_empty());
-    }
-}
-
 /// Polls the foreground app and publishes the layout when it changes (app change or profile edit).
 pub async fn watch_active_app() {
     let mut last_app = String::new();
@@ -413,5 +354,64 @@ pub async fn watch_active_app() {
             crate::net::ws::push_manual_layouts();
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn button(label: &str, action: &str, rec: bool) -> (bool, Key) {
+        (
+            rec,
+            Key {
+                label: label.into(),
+                action: Some(action.into()),
+                kind: KeyKind::Action,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn labels(buttons: &[(bool, Key)]) -> Vec<&str> {
+        buttons.iter().map(|(_, k)| k.label.as_str()).collect()
+    }
+
+    #[test]
+    fn close_app_lands_on_the_third_cell_whatever_the_profile_says() {
+        // The real shape: "Cerrar app" authored last but recommended, so the sort puts it fifth.
+        let mut b = vec![
+            button("Copiar", "ctrl+c", true),
+            button("Pegar", "ctrl+v", true),
+            button("Nueva carpeta", "ctrl+shift+n", true),
+            button("Renombrar", "f2", true),
+            button("Cerrar app", "alt+F4", true),
+            button("Cortar", "ctrl+x", false),
+        ];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b), ["Copiar", "Pegar", "Cerrar app", "Nueva carpeta", "Renombrar", "Cortar"]);
+        // Idempotent: it is already there, and re-pinning must not rotate the pad every 500 ms.
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b)[2], "Cerrar app");
+    }
+
+    /// The editor writes whatever the user typed, and `alt+f4` is the same key.
+    #[test]
+    fn the_action_is_matched_however_it_was_typed() {
+        let mut b = vec![button("a", "ctrl+c", true), button("Cerrar", "alt+f4", false)];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b)[1], "Cerrar", "two keys: last is as close to third as it gets");
+    }
+
+    /// A profile with no close key at all (and one whose `uia:` keys were all filtered out) must
+    /// come back unchanged rather than shuffled.
+    #[test]
+    fn a_profile_without_one_is_left_alone() {
+        let mut b = vec![button("a", "ctrl+c", true), button("b", "ctrl+v", true)];
+        pin_close_app(&mut b);
+        assert_eq!(labels(&b), ["a", "b"]);
+        let mut empty: Vec<(bool, Key)> = vec![];
+        pin_close_app(&mut empty);
+        assert!(empty.is_empty());
     }
 }
