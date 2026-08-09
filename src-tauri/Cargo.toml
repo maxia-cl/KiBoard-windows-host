@@ -43,7 +43,7 @@ windows-icons = "0.3"
 # Only to encode the shell tiles (HBITMAP -> PNG). Same version qrcode, windows-icons and xcap
 # already pull in, so it adds nothing new to the build.
 image = { version = "0.25", default-features = false, features = ["png"] }
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_System_Threading", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_Graphics_Gdi"] }
+windows = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_System_Threading", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_Graphics_Gdi", "Win32_Globalization"] }
 uiautomation = "0.25.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "native-tls"] }
 rcgen = "0.14.8"

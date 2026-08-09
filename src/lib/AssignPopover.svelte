@@ -1,6 +1,7 @@
 <script>
   import { getCatalogue, dropCatalogueItem } from "./store.svelte.js";
   import { iconGlyph } from "./icons.js";
+  import { t } from "./i18n.js";
 
   let { deckId, pageId, pos, onclose } = $props();
 
@@ -27,7 +28,7 @@
 <div class="overlay" onpointerdown={onclose} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="popover" onpointerdown={(e) => e.stopPropagation()} role="presentation">
-    <input use:focusOnMount placeholder="Search…" bind:value={query} />
+    <input use:focusOnMount placeholder={t("search.plain")} bind:value={query} />
     <div class="list">
       {#each filteredGroups as group (group.id)}
         <div class="group-label">{group.label}</div>

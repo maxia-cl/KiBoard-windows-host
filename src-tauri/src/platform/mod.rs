@@ -33,6 +33,19 @@ pub use stub::*;
 ///
 /// Known limitation: a nested shell living in a BACKGROUND tab wins by depth even though it
 /// isn't the active tab — the process tree doesn't expose which tab is in front.
+/// Windows that HOST a shell without being one. Anything missing here still resolves by title,
+/// which is what every other app in the catalogue does.
+const TERMINALS: &[&str] = &[
+    "windowsterminal.exe",
+    "wt.exe",
+    "openconsole.exe",
+    "conhost.exe",
+    "alacritty.exe",
+    "wezterm-gui.exe",
+    "mintty.exe",
+    "hyper.exe",
+];
+
 pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> Option<&'static str> {
     fn kind_of(exe: &str) -> Option<&'static str> {
         match exe {
@@ -44,6 +57,18 @@ pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> O
             }
             _ => None,
         }
+    }
+    // The window's OWN process has to be a terminal, or this reads somebody else's shell.
+    //
+    // Every window was being searched, and a shell ANYWHERE below it won — which is a tree most
+    // apps have. Chrome keeps a `cmd.exe /d /s /c` alive for every native-messaging extension, so
+    // the browser was answering as a Command Prompt for as long as one was installed. The desktop
+    // and the taskbar are worse: they belong to the shell's own `explorer.exe`, the parent of every
+    // app the user has ever launched from it, so any script or installer running anywhere on the
+    // machine renamed the desktop for as long as it lived.
+    let root_exe = procs.iter().find(|(pid, _, _)| *pid == root_pid).map(|(_, _, exe)| exe.as_str())?;
+    if kind_of(root_exe).is_none() && !TERMINALS.contains(&root_exe) {
+        return None;
     }
     // Breadth-first, tracking DEPTH (the window's own process counts — a bare console IS the shell).
     let mut queue: Vec<(u32, u32)> = vec![(root_pid, 0)];
@@ -144,6 +169,32 @@ mod tests {
         // A non-terminal window must not invent a shell.
         let p3 = procs(&[(700, 1, "notepad.exe")]);
         assert_eq!(pick_shell(&p3, 700, ""), None);
+    }
+
+    /// Read off this machine: Chrome runs each native-messaging host under `cmd.exe /d /s /c`, so
+    /// the browser has a live Command Prompt below it for as long as such an extension is
+    /// installed. The window is Chrome's, not the shell's — and the shell match outranks the title,
+    /// so this was the browser answering with the Command Prompt deck.
+    #[test]
+    fn an_app_that_shells_out_is_still_that_app() {
+        let p = procs(&[(16700, 5544, "chrome.exe"), (2968, 16700, "cmd.exe")]);
+        assert_eq!(pick_shell(&p, 16700, "GrapheneOS - Google Chrome"), None);
+        // And the desktop's own explorer.exe, which is the parent of everything the user launched.
+        let p2 = procs(&[
+            (5544, 2700, "explorer.exe"),
+            (12656, 5544, "windowsterminal.exe"),
+            (12516, 12656, "powershell.exe"),
+        ]);
+        assert_eq!(pick_shell(&p2, 5544, "Escritorio"), None);
+        // The terminal itself still answers, from the same tree.
+        assert_eq!(pick_shell(&p2, 12656, "Windows PowerShell"), Some("shell-pwsh"));
+    }
+
+    /// A process the snapshot does not list (it exited between the poll and the walk) is not a
+    /// terminal by default — there is nothing to read the tree from.
+    #[test]
+    fn a_window_whose_process_is_gone_answers_nothing() {
+        assert_eq!(pick_shell(&procs(&[(1, 0, "cmd.exe")]), 999, ""), None);
     }
 
     /// Manual probe against live processes:

@@ -17,6 +17,7 @@ import {
   clearPreview,
   exportDeck,
 } from "./bridge.js";
+import { t } from "./i18n.js";
 
 let decks = $state([]);
 let catalogue = $state({ groups: [] });
@@ -49,7 +50,12 @@ function buildCatalogue(apps, scenes) {
     groups: [
       {
         id: "apps",
-        label: "Apps",
+        // Only the GROUP headings are translated. An item's label is written into the deck when a
+        // key is made from it and then travels to every phone, where `i18n::tr` translates it from
+        // Spanish — storing this window's language in the file would break that for every other
+        // phone. ponytail: those labels should be the Spanish `tr` expects; today they are English
+        // and simply pass through untranslated, same as before this file had an i18n layer.
+        label: t("cat.apps"),
         items: apps.map((app) => ({
           type: "app",
           id: app.id,
@@ -63,7 +69,7 @@ function buildCatalogue(apps, scenes) {
       },
       {
         id: "system",
-        label: "System",
+        label: t("cat.system"),
         items: [
           { type: "system", id: "windows", label: "Windows", icon: "windows", action: "windows" },
           { type: "system", id: "trackpad", label: "Trackpad", icon: "mouse", action: "trackpad" },
@@ -74,7 +80,7 @@ function buildCatalogue(apps, scenes) {
       },
       {
         id: "obs",
-        label: "OBS",
+        label: t("cat.obs"),
         items: [
           { type: "obs", id: "record", label: "Record", icon: "obs", action: "obs:record" },
           { type: "obs", id: "stream", label: "Stream", icon: "obs", action: "obs:stream" },
@@ -91,7 +97,7 @@ function buildCatalogue(apps, scenes) {
       },
       {
         id: "pages",
-        label: "Pages",
+        label: t("cat.pages"),
         items: [{ type: "page-template", id: "new-page", label: "New page", icon: "folder" }],
       },
     ],
@@ -232,12 +238,12 @@ export async function save() {
   const result = await saveDecks(snapshot());
   if (!result.ok) {
     saveError = result.error;
-    showToast(`Not saved: ${result.error}`);
+    showToast(t("toast.notsaved", result.error));
     return false;
   }
   saveError = null;
   dirty = false;
-  showToast("Saved — phones updated");
+  showToast(t("toast.saved"));
   return true;
 }
 
@@ -310,7 +316,7 @@ export function dropCatalogueItem(deckId, pageId, pos, item) {
       findDeck(deckId).pages.push({ id: key.target, name: "New page", keys: [] });
     }
   });
-  showToast(existing.kind === "empty" ? `Assigned to key ${pos + 1}` : `Replaced key ${pos + 1}`);
+  showToast(t(existing.kind === "empty" ? "toast.assigned" : "toast.replaced", pos + 1));
 }
 
 /**
@@ -333,7 +339,7 @@ export function assignToSelection(item) {
     }
   }
   if (target == null) {
-    showToast("This screen is full — select a key to replace");
+    showToast(t("toast.fullselect"));
     return;
   }
   dropCatalogueItem(deckId, pageId, target, item);
@@ -349,7 +355,7 @@ export function moveKey(deckId, from, to) {
     upsertKey(fromScope, from.pos, emptyKey(from.pos));
     upsertKey(toScope, to.pos, { ...moving, pos: to.pos });
   });
-  showToast(`Moved to key ${to.pos + 1}`);
+  showToast(t("toast.moved", to.pos + 1));
 }
 
 export function copyKey(deckId, from, to) {
@@ -357,7 +363,7 @@ export function copyKey(deckId, from, to) {
   if (moving.kind === "empty") return;
   const toScope = resolveScope(deckId, to.pageId);
   withHistory(() => upsertKey(toScope, to.pos, { ...moving, pos: to.pos }));
-  showToast(`Copied to key ${to.pos + 1}`);
+  showToast(t("toast.copied", to.pos + 1));
 }
 
 export function swapKeys(deckId, from, to) {
@@ -369,14 +375,14 @@ export function swapKeys(deckId, from, to) {
     upsertKey(fromScope, from.pos, { ...b, pos: from.pos });
     upsertKey(toScope, to.pos, { ...a, pos: to.pos });
   });
-  showToast(`Swapped keys ${from.pos + 1} and ${to.pos + 1}`);
+  showToast(t("toast.swapped", from.pos + 1, to.pos + 1));
 }
 
 export function emptyKeyAt(deckId, pageId, pos) {
   const scope = resolveScope(deckId, pageId);
   if (keyAt(scope, pos).kind === "empty") return;
   withHistory(() => upsertKey(scope, pos, emptyKey(pos)));
-  showToast(`Cleared key ${pos + 1}`);
+  showToast(t("toast.cleared", pos + 1));
 }
 
 /** Drops a key onto another screen of the same page, into its first free slot. */
@@ -394,14 +400,14 @@ export function moveKeyToScreen(deckId, from, targetScreen) {
     }
   }
   if (free === -1) {
-    showToast("That screen is full");
+    showToast(t("toast.screenfull"));
     return;
   }
   withHistory(() => {
     upsertKey(scope, from.pos, emptyKey(from.pos));
     upsertKey(scope, free, { ...moving, pos: free });
   });
-  showToast(`Moved to screen ${targetScreen + 1}`);
+  showToast(t("toast.movedscreen", targetScreen + 1));
 }
 
 // --- decks (F6) ----------------------------------------------------------
@@ -455,7 +461,7 @@ export function duplicateDeck(deckId) {
   );
   withHistory(() => decks.push(copy));
   selectDeck(copy.id);
-  showToast(`Duplicated as "${copy.name}"`);
+  showToast(t("toast.duplicated", copy.name));
 }
 
 export function renameDeck(deckId, name) {
@@ -467,11 +473,11 @@ export function renameDeck(deckId, name) {
 /** Writes the SAVED deck to a file and reveals it. Unsaved edits are not in it — see `exportDeck`. */
 export async function exportSelectedDeck(deckId) {
   if (dirty) {
-    showToast("Save first — the file is written from what is stored");
+    showToast(t("toast.savefirst"));
     return;
   }
   const result = await exportDeck(deckId).catch((e) => ({ ok: false, error: String(e) }));
-  showToast(result.ok ? `Exported to ${result.path}` : `Export failed: ${result.error}`);
+  showToast(result.ok ? t("toast.exported", result.path) : t("toast.exportfailed", result.error));
 }
 
 /**
@@ -481,14 +487,14 @@ export async function exportSelectedDeck(deckId) {
  */
 export function importDeck(parsed) {
   if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.pages) || !parsed.pages.length) {
-    showToast("That file is not a deck");
+    showToast(t("toast.notadeck"));
     return;
   }
   const base = typeof parsed.id === "string" && parsed.id ? parsed.id : "imported";
   const deck = reidentify(parsed, freeDeckId(base), freeDeckName(parsed.name || "Imported deck"));
   withHistory(() => decks.push(deck));
   selectDeck(deck.id);
-  showToast(`Imported "${deck.name}" — check it, then save`);
+  showToast(t("toast.imported", deck.name));
 }
 
 export function updateKeyFields(deckId, pageId, pos, fields) {
@@ -505,6 +511,6 @@ export async function testKey(key) {
     await testAction(key.action);
     showToast(`▶ ${key.action}`);
   } catch (e) {
-    showToast(`▶ failed: ${e}`);
+    showToast(t("toast.testfailed", e));
   }
 }

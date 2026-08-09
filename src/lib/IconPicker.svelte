@@ -1,5 +1,6 @@
 <script>
   import { iconGlyph } from "./icons.js";
+  import { t } from "./i18n.js";
 
   let { current = null, onpick, onclose } = $props();
 
@@ -14,7 +15,7 @@
 <div class="overlay" onpointerdown={onclose} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="picker" onpointerdown={(e) => e.stopPropagation()} role="presentation">
-    <div class="title">Pick an icon</div>
+    <div class="title">{t("icons.pick")}</div>
     <div class="grid">
       {#each ICONS as icon (icon)}
         <button class:selected={icon === current} onclick={() => onpick(icon)}>

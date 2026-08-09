@@ -160,6 +160,9 @@ fn set_state(key: &mut Key, field: &str, value: serde_json::Value) {
 pub(crate) struct Grid {
     pub(crate) rows: usize,
     pub(crate) cols: usize,
+    /// Cells at the END of every page the CLIENT keeps for itself (§4.1 `grid.reserve`). The phone
+    /// draws the foreground app there, so the host must not paginate keys into them.
+    pub(crate) reserve: usize,
 }
 
 impl Grid {
@@ -167,17 +170,32 @@ impl Grid {
     /// checked, and `rows * cols` sizes every allocation below. 0 would divide by zero and 10000
     /// would let one frame ask for a 100M-key layout, so both ends are clamped.
     pub(crate) fn new(rows: usize, cols: usize) -> Grid {
-        Grid { rows: rows.clamp(1, MAX_SIDE), cols: cols.clamp(1, MAX_SIDE) }
+        Grid { rows: rows.clamp(1, MAX_SIDE), cols: cols.clamp(1, MAX_SIDE), reserve: 0 }
     }
+
+    /// Same grid, with `n` cells at the end left to the client. Clamped so a client cannot ask for
+    /// a page with no keys on it at all — `reserve` arrives from `hello`, before the token is
+    /// checked, like every other field of the grid.
+    pub(crate) fn reserving(self, n: usize) -> Grid {
+        Grid { reserve: n.min(self.size().saturating_sub(1)), ..self }
+    }
+
+    /// Every cell, including the reserved ones. What the client DRAWS.
     pub(crate) fn size(self) -> usize {
         self.rows * self.cols
+    }
+
+    /// Cells the host may put keys in. What pagination and addressing run on — the two must agree,
+    /// or a press at position 12 would resolve against a page cut at 15.
+    pub(crate) fn usable(self) -> usize {
+        self.size().saturating_sub(self.reserve).max(1)
     }
 }
 
 impl Default for Grid {
     /// The reference device, used when a client omits `grid`.
     fn default() -> Grid {
-        Grid { rows: 3, cols: 5 }
+        Grid { rows: 3, cols: 5, reserve: 0 }
     }
 }
 
@@ -208,7 +226,7 @@ fn dense(page: &Page) -> Vec<Key> {
 /// Total pages this deck page needs on `grid`. Always at least 1, so an empty deck still renders
 /// (as an empty grid) instead of leaving the phone with nothing to draw.
 pub(crate) fn pages(page: &Page, grid: Grid) -> usize {
-    dense(page).len().div_ceil(grid.size()).max(1)
+    dense(page).len().div_ceil(grid.usable()).max(1)
 }
 
 /// The keys for one page of `grid`, re-addressed to that page: `pos` comes back as 0..grid.size(),
@@ -216,7 +234,7 @@ pub(crate) fn pages(page: &Page, grid: Grid) -> usize {
 /// empties so the client always receives a full grid.
 pub(crate) fn keys_for(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
     let all = dense(page);
-    let size = grid.size();
+    let size = grid.usable();
     let start = want * size;
     (0..size)
         .map(|i| match all.get(start + i) {
@@ -239,10 +257,10 @@ pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Op
 /// The key's absolute address in the page behind a (client page, client pos) pair. Grid-dependent
 /// going in, grid-independent coming out — which is what makes it usable as a toggle's identity.
 pub(crate) fn flat(grid: Grid, at_page: usize, pos: usize) -> Option<usize> {
-    if pos >= grid.size() {
+    if pos >= grid.usable() {
         return None;
     }
-    at_page.checked_mul(grid.size())?.checked_add(pos)
+    at_page.checked_mul(grid.usable())?.checked_add(pos)
 }
 
 /// Rejects decks the phone could not render or resolve. The editor is not the only writer —
@@ -355,14 +373,52 @@ fn decorate_apps(keys: &mut [Key]) {
 }
 
 /// A `layout` message for one page of a deck (protocol/README.md §4.1).
-pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) -> String {
+pub(crate) fn layout_json(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: usize,
+    lang: crate::i18n::Lang,
+    app: Option<(&str, &str)>,
+) -> String {
+    render(deck, page, grid, at_page, lang, "layout", app)
+}
+
+/// One page either side of the one the client is on, as a §4.1 `page_preload`. `None` when there
+/// is no such page — nothing exists before page 0 or after the last.
+///
+/// Takes a SIGNED page so "the one before" is expressible without the caller checking first, and
+/// renders it without going near the session's page cursor. That is the whole point: the only way
+/// for a client to ASK for a page is `set_page`, which moves that cursor, and every push the host
+/// makes renders from it.
+pub(crate) fn preload_json(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: isize,
+    lang: crate::i18n::Lang,
+    app: Option<(&str, &str)>,
+) -> Option<String> {
+    let at_page = usize::try_from(at_page).ok().filter(|&p| p < pages(page, grid))?;
+    Some(render(deck, page, grid, at_page, lang, "page_preload", app))
+}
+
+fn render(
+    deck: &Deck,
+    page: &Page,
+    grid: Grid,
+    at_page: usize,
+    lang: crate::i18n::Lang,
+    kind: &str,
+    app: Option<(&str, &str)>,
+) -> String {
     let total = pages(page, grid);
     let at_page = at_page.min(total - 1);
     let mut keys = keys_for(page, grid, at_page);
     // Faces first: `decorate_apps` looks at `action`, so a toggle whose ON face launches a
     // different app has to have swapped it in before the icon and the running dot are attached.
     for (i, key) in keys.iter_mut().enumerate() {
-        let at = addr(&deck.id, &page.id, at_page * grid.size() + i);
+        let at = addr(&deck.id, &page.id, at_page * grid.usable() + i);
         let on = face_is_on(key, &at);
         wear_face(key, on);
     }
@@ -372,14 +428,21 @@ pub(crate) fn layout_json(deck: &Deck, page: &Page, grid: Grid, at_page: usize) 
     // right for a user's own label and for the OS-localized app names on the Launcher deck.
     for k in &mut keys {
         if !k.label.is_empty() {
-            k.label = crate::i18n::tr(&k.label).to_string();
+            k.label = crate::i18n::tr(lang, &k.label).to_string();
         }
     }
     json!({
         "v": 2,
-        "type": "layout",
+        "type": kind,
         "mode": "manual",
-        "source": { "kind": "deck", "id": deck.id, "name": deck.name, "page": page.id },
+        // §4.1: a manual deck follows nothing, but the PC still has something in front of it, and
+        // the phone had no way to know what it was pressing keys at. Same two fields auto mode has
+        // always carried, meaning the same thing.
+        "source": {
+            "kind": "deck", "id": deck.id, "name": deck.name, "page": page.id,
+            "appName": app.map(|(name, _)| name),
+            "appIcon": app.map(|(_, icon)| icon),
+        },
         "grid": { "rows": grid.rows, "cols": grid.cols },
         "page": at_page,
         "pages": total,
@@ -406,6 +469,68 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    // §4.1 `page_preload`. What matters is the EDGES: there is nothing before page 0 or after the
+    // last, and asking for one must come back empty rather than clamping onto a page that is
+    // already on screen — the client would draw a copy of itself coming in behind the swipe.
+    #[test]
+    fn a_preload_exists_only_where_a_page_does() {
+        let p = page_of(15);
+        let g = Grid::new(2, 3); // 6 per page -> 3 pages
+        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let at = |n: isize| preload_json(&deck, &p, g, n, crate::i18n::Lang::Es, None);
+
+        assert!(at(-1).is_none(), "nothing before the first page");
+        assert!(at(3).is_none(), "nothing after the last");
+        assert!(at(0).is_some() && at(1).is_some() && at(2).is_some());
+
+        // It is the same body as a `layout` with a different type — that is what lets the client
+        // parse it with the code it already has.
+        let json = at(1).unwrap();
+        assert!(json.contains("\"type\":\"page_preload\""));
+        assert!(!json.contains("\"type\":\"layout\""));
+        assert!(json.contains("\"page\":1") && json.contains("\"pages\":3"));
+        assert!(json.contains("k6"), "page 1 of a 6-per-page grid starts at k6");
+    }
+
+    // §4.1: a manual deck follows nothing, but the PC still has something in front of it. Auto
+    // mode has carried these two fields since v1; this is the same pair meaning the same thing,
+    // and a client that ignores them loses nothing — which is why `v` did not move.
+    // §4.1 `grid.reserve`: the client keeps the last cells of every page, so pagination and
+    // addressing must both shrink. If only one of them did, a press would resolve against a page
+    // cut differently from the one that was drawn.
+    #[test]
+    fn reserve_shrinks_the_page_and_the_addressing_together() {
+        let p = page_of(20);
+        let g = Grid::new(3, 5).reserving(2);
+        assert_eq!(g.size(), 15, "the client still DRAWS fifteen cells");
+        assert_eq!(g.usable(), 13);
+
+        let first = keys_for(&p, g, 0);
+        assert_eq!(first.len(), 13, "a page must not fill the reserved cells");
+        assert_eq!(first[12].label, "k12");
+
+        assert_eq!(pages(&p, g), 2, "20 keys at 13 a page");
+        let second = keys_for(&p, g, 1);
+        assert_eq!(second[0].label, "k13", "page 2 starts where page 1 stopped");
+        assert_eq!(resolve(&p, g, 1, 0).map(|k| k.label.as_str()), Some("k13"));
+    }
+
+    #[test]
+    fn a_manual_layout_can_name_the_app_in_front() {
+        let p = page_of(3);
+        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let grid = Grid::new(3, 5);
+
+        let named = layout_json(&deck, &p, grid, 0, crate::i18n::Lang::Es, Some(("Photoshop", "data:x")));
+        assert!(named.contains("\"appName\":\"Photoshop\""));
+        assert!(named.contains("\"appIcon\":\"data:x\""));
+
+        // And nothing in front — or a host that has not resolved one yet — says so explicitly
+        // rather than inventing a name.
+        let bare = layout_json(&deck, &p, grid, 0, crate::i18n::Lang::Es, None);
+        assert!(bare.contains("\"appName\":null"));
     }
 
     // A deck authored on 5x3 must survive being shown on a smaller grid: same keys, same order,
@@ -591,7 +716,7 @@ mod tests {
         assert!(off.toggle.is_none());
 
         let grid = Grid::new(2, 3); // six per page, so pos 6 is the first key of client page 1
-        let off = layout_json(&deck, page, grid, 1);
+        let off = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es, None);
         assert!(off.contains("Mute") && !off.contains("Unmute"));
         assert!(off.contains("\"on\":false"));
         assert!(!off.contains("toggle"), "the spare face must not reach the phone");
@@ -602,12 +727,12 @@ mod tests {
         assert!(flip(&at));
         assert_eq!(showing_action(key, is_on(&at)), Some("vol:unmute"));
 
-        let on = layout_json(&deck, page, grid, 1);
+        let on = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es, None);
         assert!(on.contains("Unmute") && on.contains("\"on\":true"));
 
         // A phone with a different grid sees the SAME face: the address is absolute, so a
         // 1x7 client is not looking at a key that a 2x3 client flipped somewhere else.
-        let wide = layout_json(&deck, page, Grid::new(1, 7), 0);
+        let wide = layout_json(&deck, page, Grid::new(1, 7), 0, crate::i18n::Lang::Es, None);
         assert!(wide.contains("Unmute"));
         flip(&at);
     }

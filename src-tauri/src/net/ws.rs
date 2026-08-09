@@ -32,7 +32,30 @@ fn current_layout() -> &'static Mutex<Option<AutoLayout>> {
 /// resolved one.
 fn auto_for(s: &Session) -> Option<String> {
     let cur = current_layout().lock().unwrap();
-    cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page))
+    cur.as_ref().map(|a| auto_layout_json(a, s.grid, s.page, s.lang))
+}
+
+/// The grid a client declared, from `hello` or `set_grid` (§4.1). Untrusted — it arrives before the
+/// token is checked, and `Grid` clamps every field for exactly that reason.
+///
+/// `reserve` is the client saying "these cells at the end of each page are mine". Absent means 0,
+/// which is what every client sent before it existed.
+fn read_grid(val: &serde_json::Value) -> Grid {
+    Grid::new(
+        val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
+        val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
+    )
+    .reserving(val["grid"]["reserve"].as_u64().unwrap_or(0) as usize)
+}
+
+/// What is in the foreground on the PC right now, for a MANUAL session (§4.1).
+///
+/// The 500 ms watcher keeps `current_layout` fresh whatever mode a phone is in, so this costs
+/// nothing to answer — auto mode was simply the only thing that ever asked. A manual deck follows
+/// nothing, which is exactly why the phone needs telling what it is pressing keys at.
+fn foreground_app() -> Option<(String, String)> {
+    let cur = current_layout().lock().unwrap();
+    cur.as_ref().map(|a| (a.app_name.clone(), a.app_icon_uri().unwrap_or_default()))
 }
 
 /// Authenticated mobile clients right now (for the host UI's badge).
@@ -57,6 +80,35 @@ fn decks_tx() -> &'static broadcast::Sender<()> {
 /// the deck on the desk and the deck in the hand cannot disagree about what a key does.
 pub fn push_manual_layouts() {
     let _ = decks_tx().send(());
+}
+
+/// Every app id a manual deck can currently show, for the watcher's running-apps fingerprint.
+///
+/// Empty when no phone is connected: enumerating windows twice a second to answer a question
+/// nobody is asking is the kind of poll that shows up in a battery report. The guard is "any
+/// client" rather than "any manual client" because sessions are per-connection state, and a
+/// counter for the finer question would have to be right on every disconnect path.
+pub fn manual_app_ids() -> Vec<String> {
+    if CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+        return Vec::new();
+    }
+    with_decks(|decks| {
+        let mut ids: Vec<String> = decks
+            .iter()
+            .flat_map(|d| d.pages.iter())
+            .flat_map(|p| p.keys.iter())
+            .filter_map(|k| {
+                let a = k.action.as_deref()?;
+                ["launch:", "focus:", "kill:"]
+                    .iter()
+                    .find_map(|v| a.strip_prefix(v))
+                    .map(|id| id.trim().to_string())
+            })
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
+    })
 }
 
 pub async fn run_ws_server() {
@@ -109,7 +161,9 @@ where
     let mut failed_auth = 0u32; // token/code brute-force brake
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
 
-    loop {
+    // Labelled because the preload sends below live in `for` loops, and a dead socket there has to
+    // end the connection, not just the loop it is in.
+    'conn: loop {
         tokio::select! {
             _ = keepalive.tick() => {
                 // Text ping (the phone ignores type=ping); keeps the connection alive.
@@ -134,12 +188,23 @@ where
                         break;
                     }
                 }
+                // `set_page`, `set_mode` and `set_grid` are all answered with a layout, and each of
+                // them lands the session somewhere with different neighbours.
+                let answered_with_layout = reply.contains("\"type\":\"layout\"");
                 if write.send(Message::text(reply)).await.is_err() { break; }
+                if answered_with_layout {
+                    for extra in preloads_for(&session) {
+                        if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                    }
+                }
                 if !was_authed && session.authed {
                     CLIENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     // Rendered for the grid this client just declared in `hello`.
                     if let Some(cur) = auto_for(&session) {
                         if write.send(Message::text(cur)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -148,8 +213,11 @@ where
                     // A client in manual mode is looking at its own deck; auto mode's broadcast
                     // would yank the layout out from under it on the next foreground-app change.
                     if session.authed && !session.manual {
-                        let msg = auto_layout_json(&layout, session.grid, session.page);
+                        let msg = auto_layout_json(&layout, session.grid, session.page, session.lang);
                         if write.send(Message::text(msg)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -159,6 +227,9 @@ where
                 if saved.is_ok() && session.authed && session.manual {
                     if let Some(msg) = manual_layout(&mut session) {
                         if write.send(Message::text(msg)).await.is_err() { break; }
+                        for extra in preloads_for(&session) {
+                            if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
                     }
                 }
             }
@@ -185,6 +256,8 @@ pub(crate) struct Session {
     pub(crate) authed: bool,
     /// Defaults to the reference 5×3 until `hello` says otherwise.
     pub(crate) grid: Grid,
+    /// The language THIS phone asked for in `hello` (§2). Per session on purpose.
+    pub(crate) lang: crate::i18n::Lang,
     pub(crate) manual: bool,
     pub(crate) deck_id: String,
     pub(crate) page_id: String,
@@ -232,13 +305,49 @@ fn with_decks<T>(f: impl FnOnce(&[crate::config::Deck]) -> T) -> T {
     }
 }
 
+/// §4.1 `page_preload`: the pages either side of the one this session is on, so a swipe on the
+/// phone has something to draw instead of an empty gap.
+///
+/// Rendered for THIS session's grid and page and sent unasked. One frame each — §4 caps a frame at
+/// 64 KB and a page may hold 48 KB of images on its own — and nothing at all when there is only one
+/// page, which is most profiles.
+fn preloads_for(s: &Session) -> Vec<String> {
+    let here = s.page as isize;
+    if s.manual {
+        with_decks(|decks| {
+            let Some(deck) = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())
+            else {
+                return Vec::new();
+            };
+            let Some(page) = deck.page(&s.page_id).or_else(|| deck.pages.first()) else {
+                return Vec::new();
+            };
+            let app = foreground_app();
+            let app = app.as_ref().map(|(n, i)| (n.as_str(), i.as_str()));
+            [here - 1, here + 1]
+                .into_iter()
+                .filter_map(|at| deck::preload_json(deck, page, s.grid, at, s.lang, app))
+                .collect()
+        })
+    } else {
+        let cur = current_layout().lock().unwrap();
+        let Some(a) = cur.as_ref() else { return Vec::new() };
+        [here - 1, here + 1]
+            .into_iter()
+            .filter_map(|at| crate::engine::layout::auto_preload_json(a, s.grid, at, s.lang))
+            .collect()
+    }
+}
+
 /// Builds the `layout` for whatever deck/page this session is on, snapping the session onto the
 /// first deck/page when it is pointing at something that no longer exists (deck deleted mid-use).
 fn manual_layout(s: &mut Session) -> Option<String> {
     let (deck_id, page_id, json) = with_decks(|decks| {
         let deck = decks.iter().find(|d| d.id == s.deck_id).or_else(|| decks.first())?;
         let page = deck.page(&s.page_id).or_else(|| deck.pages.first())?;
-        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page)))
+        let app = foreground_app();
+        let app = app.as_ref().map(|(n, i)| (n.as_str(), i.as_str()));
+        Some((deck.id.clone(), page.id.clone(), deck::layout_json(deck, page, s.grid, s.page, s.lang, app)))
     })?;
     s.deck_id = deck_id;
     s.page_id = page_id;
@@ -427,19 +536,15 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 Ok(()) => {
                     s.authed = true;
                     // 🆕 the client declares its grid; the host paginates every deck to it.
-                    s.grid = Grid::new(
-                        val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
-                        val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
-                    );
-                    // Client's language: catalogue labels are served translated. The 500ms poll
-                    // re-broadcasts the layout on its own (the JSON changes when the locale changes).
+                    s.grid = read_grid(&val);
+                    // The client's language, PER SESSION. It used to be one process-global set by
+                    // whoever said `hello` last, so a second phone in another language silently
+                    // re-labelled the first one's deck. Translation moved to render time — the
+                    // only point that knows which phone is being answered.
                     //
-                    // KNOWN LIMIT: the locale is process-global, so two phones in different
-                    // languages fight over it and the last to connect wins. Fixing it means
-                    // translating at render time per connection, the same move the grid needed —
-                    // `AutoLayout` would carry label keys instead of finished strings. Not worth it
-                    // until someone actually pairs two phones with different languages.
-                    crate::i18n::set_locale(val["locale"].as_str().unwrap_or("es"));
+                    // The host's own window does not read this at all: it follows Windows
+                    // (`i18n::host_lang`), because that window belongs to the PC.
+                    s.lang = crate::i18n::lang_of(val["locale"].as_str().unwrap_or("es"));
                     let decks: Vec<_> = config()
                         .lock()
                         .unwrap()
@@ -464,7 +569,17 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             let page = val["page"].as_u64().unwrap_or(0) as usize;
             let pos = val["pos"].as_u64().unwrap_or(0) as usize;
             let press = val["press"].as_str().unwrap_or("short");
-            match resolve_press(s, page, pos, press) {
+            // §4.2: a `picker:`/`colorpicker:`/`prompt:` key cannot run until the phone says WHICH.
+            // The answer is an index into the host's own key, or the text for its own template —
+            // resolved here, on top of the position, so nothing on the wire is ever an action.
+            let option = val["option"].as_u64().map(|n| n as usize);
+            let text = val["text"].as_str();
+            let chosen = |a: String| crate::engine::actions::choose(&a, option, text);
+            match resolve_press(s, page, pos, press).and_then(|p| match p {
+                Press::Run(a) => chosen(a).map(Press::Run).ok_or("unknown_action"),
+                Press::Toggle(a, at) => chosen(a).map(|a| Press::Toggle(a, at)).ok_or("unknown_action"),
+                go => Ok(go),
+            }) {
                 // Navigation never touches the desktop: it just moves this session and answers
                 // with the layout the phone should now be drawing.
                 Ok(Press::Go(target)) => {
@@ -540,10 +655,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             if !s.authed {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"}).to_string();
             }
-            s.grid = Grid::new(
-                val["grid"]["rows"].as_u64().unwrap_or(3) as usize,
-                val["grid"]["cols"].as_u64().unwrap_or(5) as usize,
-            );
+            s.grid = read_grid(&val);
             // The page index is an index into the OLD pagination; a wider grid means fewer pages,
             // so keeping it could land the client past the end.
             s.page = 0;
@@ -616,9 +728,35 @@ mod tests {
         }]
     }
 
+    /// One deck, one page, `n` keys — enough to paginate on the default 5×3 grid once n > 15.
+    fn deck_of(n: usize) -> Vec<Deck> {
+        vec![Deck {
+            id: "d".into(),
+            name: "D".into(),
+            pages: vec![Page {
+                id: "p0".into(),
+                keys: (0..n)
+                    .map(|pos| Key {
+                        pos,
+                        label: format!("k{pos}"),
+                        action: Some("noop".into()),
+                        kind: KeyKind::Action,
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]
+    }
+
     fn session() -> Session {
         Session { authed: true, manual: true, deck_id: "d".into(), page_id: "p0".into(), ..Default::default() }
     }
+
+    /// The preview is process-global, and `cargo test` runs tests in parallel. Everything that
+    /// touches it takes this first, or the two tests below overwrite each other's fixture.
+    static PREVIEW_LOCK: Mutex<()> = Mutex::new(());
 
     /// The preview must own BOTH halves. If it only replaced what is drawn, the phone would show
     /// the unsaved deck while a press resolved against the saved one — the phone pressing position
@@ -626,6 +764,7 @@ mod tests {
     /// keys exist to make impossible, so it is worth a test rather than a comment.
     #[test]
     fn a_preview_owns_both_the_layout_and_the_press() {
+        let _guard = PREVIEW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_preview();
         set_preview(deck_saying("PREVIEW"));
 
@@ -646,5 +785,33 @@ mod tests {
             after.map(|l| !l.contains("PREVIEW")).unwrap_or(true),
             "the preview must not survive being cleared"
         );
+    }
+
+    /// §4.1 `page_preload`. What this guards is the SELECTION — one either side, nothing outside
+    /// the deck, and nothing at all when there is only one page. Sending a page that does not
+    /// exist would have the phone draw a copy of the page it is already on coming in behind the
+    /// swipe; sending them for a single-page profile would triple every push for nothing.
+    #[test]
+    fn preloads_are_the_two_neighbours_and_never_more() {
+        let _guard = PREVIEW_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_preview();
+        set_preview(deck_of(20)); // 2 pages on the default 5x3 grid
+
+        let mut s = session();
+        let first = preloads_for(&s);
+        assert_eq!(first.len(), 1, "page 0 has nothing before it");
+        assert!(first[0].contains("\"type\":\"page_preload\""));
+        assert!(first[0].contains("\"page\":1"));
+
+        s.page = 1;
+        let last = preloads_for(&s);
+        assert_eq!(last.len(), 1, "the last page has nothing after it");
+        assert!(last[0].contains("\"page\":0"));
+
+        // A profile that fits on one page — most of them — costs nothing.
+        set_preview(deck_saying("ONE"));
+        assert!(preloads_for(&session()).is_empty());
+
+        clear_preview();
     }
 }

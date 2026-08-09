@@ -122,6 +122,20 @@ fn host_status() -> serde_json::Value {
     })
 }
 
+/// The language the editor window should speak: this PC's, never the phone's.
+///
+/// Same source as the tray menu ([`i18n::host_lang`]), so the two halves of the host cannot end up
+/// in different languages. The strings themselves live in `src/lib/i18n.js` — they are Svelte's,
+/// and a table crossing this bridge would buy nothing.
+#[tauri::command]
+fn host_lang() -> &'static str {
+    match i18n::host_lang() {
+        i18n::Lang::En => "en",
+        i18n::Lang::Zh => "zh",
+        i18n::Lang::Es => "es",
+    }
+}
+
 #[tauri::command]
 fn set_analytics(on: bool) {
     let mut cfg = config().lock().unwrap();
@@ -408,6 +422,7 @@ pub fn run() {
             obs_info,
             set_obs_password,
             host_status,
+            host_lang,
             set_analytics,
             open_donate,
             test_action,
@@ -455,9 +470,9 @@ pub fn run() {
                 }
             });
 
-            let pair = MenuItem::with_id(app, "pair", "Abrir KiBoard…", true, None::<&str>)?;
-            let unpair = MenuItem::with_id(app, "unpair", "Desvincular todo", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Salir de KiBoard", true, None::<&str>)?;
+            let pair = MenuItem::with_id(app, "pair", crate::i18n::ui("tray.open"), true, None::<&str>)?;
+            let unpair = MenuItem::with_id(app, "unpair", crate::i18n::ui("tray.unpair"), true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", crate::i18n::ui("tray.quit"), true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&pair, &unpair, &quit])?;
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
