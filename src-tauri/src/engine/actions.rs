@@ -29,6 +29,45 @@ pub fn run_action(action: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// The concrete action behind a key that asks the phone something first (protocol §4.2).
+///
+/// `picker:` and `colorpicker:` are a list of named branches; `prompt:` is a template with a hole.
+/// The phone draws the list — the whole string is in the layout it was given — and sends back an
+/// INDEX or the text typed, never an action. That is §4.2, and it is why the branch is chosen HERE,
+/// against the host's own key, rather than trusting anything that came off the wire.
+///
+/// Anything else is returned unchanged, so every ordinary key goes through this untouched.
+///
+/// `None` means the choice names nothing that exists — including a client that has never heard of
+/// options and pressed one of these blind, which is what these keys did for everybody until now.
+pub fn choose(action: &str, option: Option<usize>, text: Option<&str>) -> Option<String> {
+    if let Some(list) = action.strip_prefix("picker:") {
+        return branch(list, option?).map(|(_, act)| act.to_string());
+    }
+    if let Some(list) = action.strip_prefix("colorpicker:") {
+        // The hex is what the PHONE paints the swatch with. What the PC runs is the palette entry
+        // by name — Paint's swatches are UIA ListItems, and the catalogue stores their exact live
+        // names for that reason.
+        return branch(list, option?).map(|(name, _)| format!("uia:{name}"));
+    }
+    if let Some(rest) = action.strip_prefix("prompt:") {
+        let (_, template) = rest.split_once('=')?;
+        let text = text?.trim();
+        // `>>` would close the host's step and open one the user was never shown.
+        if text.is_empty() || text.contains(">>") {
+            return None;
+        }
+        return Some(template.replace("{}", text));
+    }
+    Some(action.to_string())
+}
+
+/// The nth `Name=value` of a `;`-separated list. Split on the FIRST `=` only: a value is an action
+/// chain and carries plenty more of them.
+fn branch(list: &str, at: usize) -> Option<(&str, &str)> {
+    list.split(';').nth(at)?.split_once('=').map(|(name, value)| (name.trim(), value))
+}
+
 /// A single atomic step: screenshot, UIA button, literal text, or a keyboard shortcut.
 pub fn run_step(step: &str) -> Result<(), &'static str> {
     if step == "screenshot" {
@@ -236,6 +275,50 @@ mod tests {
     fn wait_pauses_and_validates() {
         assert!(run_step("wait:50").is_ok());
         assert!(run_step("wait:abc").is_err());
+    }
+
+    /// The two keys that started this: `picker:` was in the catalogue from the first day and no
+    /// step ever understood it, so "Modelo" and "Esfuerzo" answered `bad_key` and typed nothing.
+    #[test]
+    fn a_picker_runs_the_branch_that_was_chosen() {
+        let a = "picker:Fable=type:/model>>wait:400>>type: claude-fable-5;Opus=type:/model>>wait:400>>type: claude-opus-5";
+        assert_eq!(
+            choose(a, Some(1), None).as_deref(),
+            Some("type:/model>>wait:400>>type: claude-opus-5"),
+            "the value is a whole chain, `=` splits once"
+        );
+        assert_eq!(choose(a, Some(0), None).unwrap().starts_with("type:/model"), true);
+        // No choice, or one that names no branch: nothing to run.
+        assert_eq!(choose(a, None, None), None);
+        assert_eq!(choose(a, Some(9), None), None);
+    }
+
+    /// The swatch's hex paints the phone; the PC clicks the palette entry BY NAME.
+    #[test]
+    fn a_colour_swatch_runs_the_palette_entry() {
+        let a = "colorpicker:Negro=000000;Rojo=ED1C24";
+        assert_eq!(choose(a, Some(1), None).as_deref(), Some("uia:Rojo"));
+        assert_eq!(choose(a, None, None), None);
+    }
+
+    #[test]
+    fn a_prompt_fills_the_hole_and_refuses_to_open_a_step() {
+        let a = "prompt:Nombre de la carpeta=type:mkdir {}>>enter";
+        assert_eq!(choose(a, None, Some("informes")).as_deref(), Some("type:mkdir informes>>enter"));
+        assert_eq!(choose(a, None, Some("  ")), None, "empty is not a folder name");
+        assert_eq!(choose(a, None, None), None);
+        assert_eq!(
+            choose(a, None, Some("x>>ctrl+s")),
+            None,
+            "`>>` would run a step the user was never shown"
+        );
+    }
+
+    /// Every ordinary key goes through this untouched, options or not.
+    #[test]
+    fn anything_else_is_returned_as_it_came() {
+        assert_eq!(choose("ctrl+c", None, None).as_deref(), Some("ctrl+c"));
+        assert_eq!(choose("ctrl+c", Some(3), Some("x")).as_deref(), Some("ctrl+c"));
     }
 
     #[test]

@@ -569,7 +569,17 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             let page = val["page"].as_u64().unwrap_or(0) as usize;
             let pos = val["pos"].as_u64().unwrap_or(0) as usize;
             let press = val["press"].as_str().unwrap_or("short");
-            match resolve_press(s, page, pos, press) {
+            // §4.2: a `picker:`/`colorpicker:`/`prompt:` key cannot run until the phone says WHICH.
+            // The answer is an index into the host's own key, or the text for its own template —
+            // resolved here, on top of the position, so nothing on the wire is ever an action.
+            let option = val["option"].as_u64().map(|n| n as usize);
+            let text = val["text"].as_str();
+            let chosen = |a: String| crate::engine::actions::choose(&a, option, text);
+            match resolve_press(s, page, pos, press).and_then(|p| match p {
+                Press::Run(a) => chosen(a).map(Press::Run).ok_or("unknown_action"),
+                Press::Toggle(a, at) => chosen(a).map(|a| Press::Toggle(a, at)).ok_or("unknown_action"),
+                go => Ok(go),
+            }) {
                 // Navigation never touches the desktop: it just moves this session and answers
                 // with the layout the phone should now be drawing.
                 Ok(Press::Go(target)) => {
