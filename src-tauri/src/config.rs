@@ -188,7 +188,7 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
             // with a wait in between. In one shot ("type:/effort low") the TUI's autocomplete
             // eats the space and you get "/effortlow" -> unknown command.
             b("Modelo", "model",
-              "picker:Fable=type:/model>>wait:400>>type: claude-fable-5>>wait:250>>enter;Opus=type:/model>>wait:400>>type: claude-opus-4-8>>wait:250>>enter;Sonnet=type:/model>>wait:400>>type: sonnet>>wait:250>>enter;Haiku=type:/model>>wait:400>>type: haiku>>wait:250>>enter"),
+              "picker:Fable=type:/model>>wait:400>>type: claude-fable-5>>wait:250>>enter;Opus=type:/model>>wait:400>>type: claude-opus-5>>wait:250>>enter;Sonnet=type:/model>>wait:400>>type: sonnet>>wait:250>>enter;Haiku=type:/model>>wait:400>>type: haiku>>wait:250>>enter"),
             b("Esfuerzo", "effort",
               "picker:Low=type:/effort>>wait:400>>type: low>>wait:250>>enter;Medium=type:/effort>>wait:400>>type: medium>>wait:250>>enter;High=type:/effort>>wait:400>>type: high>>wait:250>>enter;Max=type:/effort>>wait:400>>type: max>>wait:250>>enter"),
             // Mode: opens the app's mode menu and is picked with Up/Down/Accept from this same
@@ -1101,7 +1101,7 @@ fn launcher_deck() -> Option<Deck> {
 
 /// Version of the built-in profiles. Bump it when `default_profiles` changes so already-installed
 /// hosts refresh them (keeping the token and pairing).
-const PROFILES_VERSION: u32 = 37;
+const PROFILES_VERSION: u32 = 38;
 
 /// Shape of `config.json`. Bumped when the model changes in a way `#[serde(default)]` cannot
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
