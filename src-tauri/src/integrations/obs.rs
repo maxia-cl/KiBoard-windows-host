@@ -19,7 +19,10 @@ pub fn set_sender(tx: tokio::sync::mpsc::UnboundedSender<String>) {
 }
 
 /// Maps an "obs:<cmd>" action to the obs-websocket request. Pure, so it's testable.
-pub fn obs_request_for(cmd: &str, mic_name: &str) -> Result<(&'static str, serde_json::Value), &'static str> {
+pub fn obs_request_for(
+    cmd: &str,
+    mic_name: &str,
+) -> Result<(&'static str, serde_json::Value), &'static str> {
     match cmd {
         "record" => Ok(("ToggleRecord", json!({}))),
         "stream" => Ok(("ToggleStream", json!({}))),
@@ -51,7 +54,11 @@ fn obs_send(request_type: &str, data: serde_json::Value) -> Result<(), &'static 
         "d": { "requestType": request_type, "requestId": id.to_string(), "requestData": data }
     })
     .to_string();
-    OBS_TX.get().ok_or("obs_desconectado")?.send(msg).map_err(|_| "obs_desconectado")
+    OBS_TX
+        .get()
+        .ok_or("obs_desconectado")?
+        .send(msg)
+        .map_err(|_| "obs_desconectado")
 }
 
 pub fn obs_action(cmd: &str) -> Result<(), &'static str> {
@@ -112,7 +119,13 @@ async fn obs_serve(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> Res
     obs_state().lock().unwrap().connected = true;
 
     // Initial state (the op 7 responses fill it in).
-    for req in ["GetSceneList", "GetSpecialInputs", "GetRecordStatus", "GetStreamStatus", "GetReplayBufferStatus"] {
+    for req in [
+        "GetSceneList",
+        "GetSpecialInputs",
+        "GetRecordStatus",
+        "GetStreamStatus",
+        "GetReplayBufferStatus",
+    ] {
         let _ = obs_send(req, json!({}));
     }
 
@@ -165,9 +178,15 @@ fn obs_apply(v: &serde_json::Value) {
             Some(5) => {
                 let d = &v["d"]["eventData"];
                 match v["d"]["eventType"].as_str().unwrap_or("") {
-                    "RecordStateChanged" => st.recording = d["outputActive"].as_bool().unwrap_or(st.recording),
-                    "StreamStateChanged" => st.streaming = d["outputActive"].as_bool().unwrap_or(st.streaming),
-                    "ReplayBufferStateChanged" => st.replay_active = d["outputActive"].as_bool().unwrap_or(st.replay_active),
+                    "RecordStateChanged" => {
+                        st.recording = d["outputActive"].as_bool().unwrap_or(st.recording)
+                    }
+                    "StreamStateChanged" => {
+                        st.streaming = d["outputActive"].as_bool().unwrap_or(st.streaming)
+                    }
+                    "ReplayBufferStateChanged" => {
+                        st.replay_active = d["outputActive"].as_bool().unwrap_or(st.replay_active)
+                    }
                     "InputMuteStateChanged" => {
                         if d["inputName"].as_str() == Some(st.mic_name.as_str()) {
                             st.mic_muted = d["inputMuted"].as_bool().unwrap_or(st.mic_muted);
@@ -185,7 +204,10 @@ fn obs_apply(v: &serde_json::Value) {
                 match v["d"]["requestType"].as_str().unwrap_or("") {
                     "GetSceneList" => {
                         st.scenes = obs_scene_names(&d["scenes"]);
-                        st.current_scene = d["currentProgramSceneName"].as_str().unwrap_or("").to_string();
+                        st.current_scene = d["currentProgramSceneName"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string();
                     }
                     "GetSpecialInputs" => {
                         st.mic_name = ["mic1", "mic2", "mic3", "mic4"]
@@ -206,7 +228,10 @@ fn obs_apply(v: &serde_json::Value) {
                             .as_array()
                             .and_then(|a| {
                                 a.iter().find(|i| {
-                                    i["inputKind"].as_str().unwrap_or("").contains("input_capture")
+                                    i["inputKind"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .contains("input_capture")
                                 })
                             })
                             .and_then(|i| i["inputName"].as_str())
@@ -216,9 +241,15 @@ fn obs_apply(v: &serde_json::Value) {
                             followup = Some(("GetInputMute", json!({ "inputName": st.mic_name })));
                         }
                     }
-                    "GetRecordStatus" => st.recording = d["outputActive"].as_bool().unwrap_or(false),
-                    "GetStreamStatus" => st.streaming = d["outputActive"].as_bool().unwrap_or(false),
-                    "GetReplayBufferStatus" => st.replay_active = d["outputActive"].as_bool().unwrap_or(false),
+                    "GetRecordStatus" => {
+                        st.recording = d["outputActive"].as_bool().unwrap_or(false)
+                    }
+                    "GetStreamStatus" => {
+                        st.streaming = d["outputActive"].as_bool().unwrap_or(false)
+                    }
+                    "GetReplayBufferStatus" => {
+                        st.replay_active = d["outputActive"].as_bool().unwrap_or(false)
+                    }
                     "GetInputMute" => st.mic_muted = d["inputMuted"].as_bool().unwrap_or(false),
                     _ => {}
                 }

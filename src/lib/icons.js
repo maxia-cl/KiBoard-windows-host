@@ -14,10 +14,10 @@ const GLYPHS = {
   folder: "\u{1F4C1}",
   newfolder: "\u{1F4C2}",
   home: "\u{1F3E0}",
-  back: "←",
-  fwdnav: "→",
-  prev: "‹",
-  next: "›",
+  back: "◀",
+  fwdnav: "▶",
+  prev: "◀",
+  next: "▶",
   page: "⏭️",
   scrollup: "▲",
   scrolldown: "▼",
@@ -94,10 +94,11 @@ const GLYPHS = {
   // --- media and capture ---
   obs: "\u{1F3A5}",
   video: "\u{1F4FA}",
-  record: "⏺️",
+  record: "●",
   stream: "\u{1F4E1}",
   clip: "\u{1F3AC}",
-  play: "▶️",
+  play: "▶",
+  bolt: "ϟ",
   subtitles: "\u{1F4AC}",
   mic: "\u{1F3A4}",
   mute: "\u{1F507}",
@@ -123,12 +124,27 @@ const GLYPHS = {
   download: "⬇️",
 
   // --- outcomes ---
-  accept: "✓",
-  close: "✕",
+  accept: "✔",
+  close: "×",
   // Claude Code's own two: which model is answering, and how hard it is being asked to think.
   model: "\u{1F9E0}",
   effort: "\u{1F39A}️",
 };
+
+// Solid triangles occupy less visible area than emoji and other standard glyphs. Key renderers
+// use this semantic set to enlarge only directional controls.
+export const directionalIconNames = new Set([
+  "back",
+  "fwdnav",
+  "prev",
+  "next",
+  "scrollup",
+  "scrolldown",
+]);
+
+export function isDirectionalIcon(name) {
+  return directionalIconNames.has(name);
+}
 
 export function iconGlyph(name) {
   return GLYPHS[name] ?? "⬛";

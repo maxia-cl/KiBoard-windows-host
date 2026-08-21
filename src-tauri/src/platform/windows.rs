@@ -19,9 +19,9 @@ pub fn extract_icon_b64(path: &str) -> String {
     b64.rsplit(',').next().unwrap_or("").to_string()
 }
 
-/// Which shell is running INSIDE the foreground window. Returns the profile id
-/// ("shell-pwsh" | "shell-cmd" | "shell-bash"). See `super::pick_shell` for the matching rule.
-pub fn detect_shell_kind(root_pid: u32, title: &str) -> Option<&'static str> {
+/// The most specific terminal profile running inside the foreground window: an AI agent first,
+/// otherwise the shell hosting it.
+pub fn detect_terminal_profile(root_pid: u32, title: &str) -> Option<&'static str> {
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
@@ -49,7 +49,8 @@ pub fn detect_shell_kind(root_pid: u32, title: &str) -> Option<&'static str> {
         }
         let _ = windows::Win32::Foundation::CloseHandle(snap);
     }
-    super::pick_shell(&procs, root_pid, title)
+    super::pick_terminal_agent(&procs, root_pid)
+        .or_else(|| super::pick_shell(&procs, root_pid, title))
 }
 
 /// Which `uia:` actions are disabled right now in the foreground window's control (so the phone
@@ -110,7 +111,9 @@ pub fn invoke_uia(name: &str) -> Result<(), &'static str> {
     // Scope to the foreground window (small tree -> fast). If not found there (a popup menu/
     // flyout can live in another window), retry from the desktop.
     let hwnd = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
-    let fg = automation.element_from_handle(Handle::from(hwnd.0 as isize)).ok();
+    let fg = automation
+        .element_from_handle(Handle::from(hwnd.0 as isize))
+        .ok();
     // Candidates by root: exact name first ("Rectangle" doesn't collide with "Rounded
     // rectangle"); partial match otherwise.
     let gather = |root: &uiautomation::UIElement| -> Vec<uiautomation::UIElement> {
@@ -182,10 +185,14 @@ pub fn invoke_uia(name: &str) -> Result<(), &'static str> {
 
 /// Runs `f` with the default output device's IAudioEndpointVolume.
 fn with_endpoint_volume<T>(
-    f: impl FnOnce(&windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume) -> windows::core::Result<T>,
+    f: impl FnOnce(
+        &windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume,
+    ) -> windows::core::Result<T>,
 ) -> Option<T> {
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
-    use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
+    use windows::Win32::Media::Audio::{
+        eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
+    };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
     };
@@ -351,9 +358,9 @@ pub fn window_aumid(id: isize) -> String {
             pid: 5,
         };
     unsafe {
-        let Ok(store) = SHGetPropertyStoreForWindow::<IPropertyStore>(HWND(
-            id as *mut core::ffi::c_void,
-        )) else {
+        let Ok(store) =
+            SHGetPropertyStoreForWindow::<IPropertyStore>(HWND(id as *mut core::ffi::c_void))
+        else {
             return String::new();
         };
         let Ok(v) = store.GetValue(&PKEY_AUMID) else {
@@ -463,9 +470,15 @@ pub fn process_running(names: &[&str]) -> bool {
 /// Takes a screenshot of the primary monitor and saves it under Pictures/KiBoard.
 pub fn take_screenshot() -> Result<(), &'static str> {
     use xcap::Monitor;
-    let monitor = Monitor::all().map_err(|_| "internal")?.into_iter().next().ok_or("no_monitor")?;
+    let monitor = Monitor::all()
+        .map_err(|_| "internal")?
+        .into_iter()
+        .next()
+        .ok_or("no_monitor")?;
     let img = monitor.capture_image().map_err(|_| "internal")?;
-    let dir = dirs::picture_dir().unwrap_or(std::env::temp_dir()).join("KiBoard");
+    let dir = dirs::picture_dir()
+        .unwrap_or(std::env::temp_dir())
+        .join("KiBoard");
     std::fs::create_dir_all(&dir).map_err(|_| "internal")?;
     let path = dir.join(format!("screenshot-{}.png", crate::now_ts()));
     img.save(&path).map_err(|_| "internal")?;

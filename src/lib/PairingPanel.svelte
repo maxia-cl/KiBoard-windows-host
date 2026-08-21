@@ -52,7 +52,7 @@
   <div class="panel" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="header">
       <span>{firstRun ? t("pair.firstrun") : t("pairing.title")}</span>
-      <button class="close" onclick={onclose}>✕</button>
+      <button class="close" onclick={onclose}>×</button>
     </div>
 
     {#if firstRun}

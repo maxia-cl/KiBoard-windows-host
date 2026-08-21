@@ -88,7 +88,9 @@ pub(crate) fn live_on(action: &str) -> Option<bool> {
         "replaybuffer" => Some(obs.replay_active),
         "mic" => Some(obs.mic_muted),
         // A scene key wears its ON face when it IS the scene on air.
-        s => s.strip_prefix("scene:").map(|name| obs.current_scene == name),
+        s => s
+            .strip_prefix("scene:")
+            .map(|name| obs.current_scene == name),
     }
 }
 
@@ -121,7 +123,9 @@ pub(crate) fn showing_action(key: &Key, on: bool) -> Option<&str> {
 /// Paints the ON face over a key and drops `toggle` so it never reaches the phone. Each field
 /// overrides only itself: a toggle that sets just the label keeps the rest of the key.
 fn wear_face(key: &mut Key, on: bool) {
-    let Some(face) = key.toggle.take() else { return };
+    let Some(face) = key.toggle.take() else {
+        return;
+    };
     if on {
         if !face.label.is_empty() {
             key.label = face.label;
@@ -170,14 +174,21 @@ impl Grid {
     /// checked, and `rows * cols` sizes every allocation below. 0 would divide by zero and 10000
     /// would let one frame ask for a 100M-key layout, so both ends are clamped.
     pub(crate) fn new(rows: usize, cols: usize) -> Grid {
-        Grid { rows: rows.clamp(1, MAX_SIDE), cols: cols.clamp(1, MAX_SIDE), reserve: 0 }
+        Grid {
+            rows: rows.clamp(1, MAX_SIDE),
+            cols: cols.clamp(1, MAX_SIDE),
+            reserve: 0,
+        }
     }
 
     /// Same grid, with `n` cells at the end left to the client. Clamped so a client cannot ask for
     /// a page with no keys on it at all — `reserve` arrives from `hello`, before the token is
     /// checked, like every other field of the grid.
     pub(crate) fn reserving(self, n: usize) -> Grid {
-        Grid { reserve: n.min(self.size().saturating_sub(1)), ..self }
+        Grid {
+            reserve: n.min(self.size().saturating_sub(1)),
+            ..self
+        }
     }
 
     /// Every cell, including the reserved ones. What the client DRAWS.
@@ -195,7 +206,11 @@ impl Grid {
 impl Default for Grid {
     /// The reference device, used when a client omits `grid`.
     fn default() -> Grid {
-        Grid { rows: 3, cols: 5, reserve: 0 }
+        Grid {
+            rows: 3,
+            cols: 5,
+            reserve: 0,
+        }
     }
 }
 
@@ -214,7 +229,12 @@ const IMAGE_BUDGET: usize = 48 * 1024;
 fn dense(page: &Page) -> Vec<Key> {
     let len = page.keys.iter().map(|k| k.pos + 1).max().unwrap_or(0);
     let len = len.min(MAX_SIDE * MAX_SIDE * 8);
-    let mut out: Vec<Key> = (0..len).map(|pos| Key { pos, ..Default::default() }).collect();
+    let mut out: Vec<Key> = (0..len)
+        .map(|pos| Key {
+            pos,
+            ..Default::default()
+        })
+        .collect();
     for k in &page.keys {
         if let Some(slot) = out.get_mut(k.pos) {
             *slot = k.clone();
@@ -229,18 +249,144 @@ pub(crate) fn pages(page: &Page, grid: Grid) -> usize {
     dense(page).len().div_ceil(grid.usable()).max(1)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ArrowDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+fn arrow_direction(key: &Key) -> Option<ArrowDirection> {
+    match key.icon.as_str() {
+        "scrollup" | "up" => Some(ArrowDirection::Up),
+        "scrolldown" | "down" => Some(ArrowDirection::Down),
+        "prev" | "back" | "left" => Some(ArrowDirection::Left),
+        "next" | "fwdnav" | "right" => Some(ArrowDirection::Right),
+        _ => None,
+    }
+}
+
+/// Moves directional keys into the familiar keyboard geometry without consuming extra cells.
+/// The two cells beside Up remain available to ordinary keys, so a full 5×3 board still fits on
+/// one page: only the arrows' relationship is fixed, not an ornamental empty D-pad outline.
+fn arrange_arrows(keys: Vec<Key>, grid: Grid) -> Vec<Key> {
+    let at = |direction| {
+        keys.iter()
+            .position(|key| arrow_direction(key) == Some(direction))
+    };
+    let up = at(ArrowDirection::Up);
+    let down = at(ArrowDirection::Down);
+    let left = at(ArrowDirection::Left);
+    let right = at(ArrowDirection::Right);
+    let size = keys.len();
+
+    let mut selected: Vec<(usize, usize)> = Vec::new();
+    if let (Some(up), Some(down), Some(left), Some(right)) = (up, down, left, right) {
+        let mut block = None;
+        if grid.rows >= 2 && grid.cols >= 3 {
+            for row in 0..grid.rows - 1 {
+                for col in 0..grid.cols - 2 {
+                    let targets = [
+                        row * grid.cols + col + 1,
+                        (row + 1) * grid.cols + col,
+                        (row + 1) * grid.cols + col + 1,
+                        (row + 1) * grid.cols + col + 2,
+                    ];
+                    if targets.iter().all(|&target| target < size) {
+                        block = Some(targets);
+                    }
+                }
+            }
+        }
+        if let Some([up_at, left_at, down_at, right_at]) = block {
+            selected.extend([
+                (up, up_at),
+                (left, left_at),
+                (down, down_at),
+                (right, right_at),
+            ]);
+        }
+    }
+
+    if selected.is_empty() {
+        if let (Some(up), Some(down)) = (up, down) {
+            let mut pair = None;
+            if grid.rows >= 2 {
+                for row in 0..grid.rows - 1 {
+                    for col in 0..grid.cols {
+                        let targets = [row * grid.cols + col, (row + 1) * grid.cols + col];
+                        if targets.iter().all(|&target| target < size) {
+                            pair = Some(targets);
+                        }
+                    }
+                }
+            }
+            if let Some([up_at, down_at]) = pair {
+                selected.extend([(up, up_at), (down, down_at)]);
+            }
+        } else if let (Some(left), Some(right)) = (left, right) {
+            let mut pair = None;
+            if grid.cols >= 2 {
+                for row in 0..grid.rows {
+                    for col in 0..grid.cols - 1 {
+                        let targets = [row * grid.cols + col, row * grid.cols + col + 1];
+                        if targets.iter().all(|&target| target < size) {
+                            pair = Some(targets);
+                        }
+                    }
+                }
+            }
+            if let Some([left_at, right_at]) = pair {
+                selected.extend([(left, left_at), (right, right_at)]);
+            }
+        }
+    }
+
+    if selected.is_empty() {
+        return keys;
+    }
+
+    let mut output: Vec<Option<Key>> = (0..size).map(|_| None).collect();
+    let mut remaining = Vec::with_capacity(size - selected.len());
+    for (index, key) in keys.into_iter().enumerate() {
+        if let Some((_, target)) = selected.iter().find(|(source, _)| *source == index) {
+            output[*target] = Some(key);
+        } else {
+            remaining.push(key);
+        }
+    }
+    let mut remaining = remaining.into_iter();
+    output
+        .into_iter()
+        .map(|slot| {
+            slot.unwrap_or_else(|| remaining.next().expect("arrow layout preserves capacity"))
+        })
+        .collect()
+}
+
+/// One page with source positions intact. Rendering re-addresses them afterwards; resolving uses
+/// these original positions to execute the same key the phone saw after the arrow permutation.
+fn arranged_page(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
+    let all = dense(page);
+    let size = grid.usable();
+    let Some(start) = want.checked_mul(size) else {
+        return (0..size).map(|_| Key::default()).collect();
+    };
+    let keys = (0..size)
+        .map(|i| all.get(start + i).cloned().unwrap_or_default())
+        .collect();
+    arrange_arrows(keys, grid)
+}
+
 /// The keys for one page of `grid`, re-addressed to that page: `pos` comes back as 0..grid.size(),
 /// which is exactly what the phone sends back in a `key` message. Short pages are padded with
 /// empties so the client always receives a full grid.
 pub(crate) fn keys_for(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
-    let all = dense(page);
-    let size = grid.usable();
-    let start = want * size;
-    (0..size)
-        .map(|i| match all.get(start + i) {
-            Some(k) => Key { pos: i, ..k.clone() },
-            None => Key { pos: i, ..Default::default() },
-        })
+    arranged_page(page, grid, want)
+        .into_iter()
+        .enumerate()
+        .map(|(pos, key)| Key { pos, ..key })
         .collect()
 }
 
@@ -250,8 +396,13 @@ pub(crate) fn keys_for(page: &Page, grid: Grid, want: usize) -> Vec<Key> {
 /// authenticated client cannot ask for something that is not on the layout it was given. Anything
 /// off the grid, past the end, or landing on a hole resolves to `None` (`no_such_key`).
 pub(crate) fn resolve(page: &Page, grid: Grid, at_page: usize, pos: usize) -> Option<&Key> {
-    let at = flat(grid, at_page, pos)?;
-    page.keys.iter().find(|k| k.pos == at && k.kind != KeyKind::Empty)
+    let shown = arranged_page(page, grid, at_page).into_iter().nth(pos)?;
+    if shown.kind == KeyKind::Empty {
+        return None;
+    }
+    page.keys
+        .iter()
+        .find(|key| key.pos == shown.pos && key.kind != KeyKind::Empty)
 }
 
 /// The key's absolute address in the page behind a (client page, client pos) pair. Grid-dependent
@@ -288,7 +439,10 @@ pub(crate) fn validate(decks: &[Deck]) -> Result<(), String> {
                 return Err(format!("a page of deck \"{}\" has no id", deck.id));
             }
             if pages.contains(&page.id.as_str()) {
-                return Err(format!("deck \"{}\" repeats the page id \"{}\"", deck.id, page.id));
+                return Err(format!(
+                    "deck \"{}\" repeats the page id \"{}\"",
+                    deck.id, page.id
+                ));
             }
             pages.push(&page.id);
         }
@@ -299,7 +453,12 @@ pub(crate) fn validate(decks: &[Deck]) -> Result<(), String> {
             // with a photo pasted into it — which would otherwise arrive slowly or not at all, and
             // nothing downstream would say why. Budgeted per PAGE, which is conservative: a frame
             // carries at most one grid-full of a page, never more.
-            let stored_images: usize = page.keys.iter().filter_map(|k| k.image.as_ref()).map(String::len).sum();
+            let stored_images: usize = page
+                .keys
+                .iter()
+                .filter_map(|k| k.image.as_ref())
+                .map(String::len)
+                .sum();
             if stored_images > IMAGE_BUDGET {
                 return Err(format!(
                     "page \"{}\" stores {} KB of images; a page must stay under {} KB so the layout fits one frame",
@@ -312,7 +471,10 @@ pub(crate) fn validate(decks: &[Deck]) -> Result<(), String> {
                 // `pos` IS the address the phone sends back: two keys on one position means a
                 // press resolves to whichever the host happens to find first.
                 if at.contains(&key.pos) {
-                    return Err(format!("two keys share position {} on page \"{}\"", key.pos, page.id));
+                    return Err(format!(
+                        "two keys share position {} on page \"{}\"",
+                        key.pos, page.id
+                    ));
                 }
                 at.push(key.pos);
                 match key.kind {
@@ -356,9 +518,8 @@ fn decorate_apps(keys: &mut [Key]) {
     if ids.is_empty() {
         return;
     }
-    let live = crate::platform::apps::running(
-        &ids.iter().map(|(_, id)| id.clone()).collect::<Vec<_>>(),
-    );
+    let live =
+        crate::platform::apps::running(&ids.iter().map(|(_, id)| id.clone()).collect::<Vec<_>>());
     for ((i, id), running) in ids.into_iter().zip(live) {
         let key = &mut keys[i];
         // The stored key wins: a custom image set in the editor is not overwritten by the exe's.
@@ -399,7 +560,9 @@ pub(crate) fn preload_json(
     lang: crate::i18n::Lang,
     app: Option<(&str, &str)>,
 ) -> Option<String> {
-    let at_page = usize::try_from(at_page).ok().filter(|&p| p < pages(page, grid))?;
+    let at_page = usize::try_from(at_page)
+        .ok()
+        .filter(|&p| p < pages(page, grid))?;
     Some(render(deck, page, grid, at_page, lang, "page_preload", app))
 }
 
@@ -471,6 +634,21 @@ mod tests {
         }
     }
 
+    fn arrow_page(all_four: bool) -> Page {
+        let mut page = page_of(if all_four { 12 } else { 8 });
+        page.keys[1].label = "Up".into();
+        page.keys[1].icon = "scrollup".into();
+        page.keys[2].label = "Down".into();
+        page.keys[2].icon = "scrolldown".into();
+        if all_four {
+            page.keys[3].label = "Left".into();
+            page.keys[3].icon = "prev".into();
+            page.keys[4].label = "Right".into();
+            page.keys[4].icon = "next".into();
+        }
+        page
+    }
+
     // §4.1 `page_preload`. What matters is the EDGES: there is nothing before page 0 or after the
     // last, and asking for one must come back empty rather than clamping onto a page that is
     // already on screen — the client would draw a copy of itself coming in behind the swipe.
@@ -478,7 +656,12 @@ mod tests {
     fn a_preload_exists_only_where_a_page_does() {
         let p = page_of(15);
         let g = Grid::new(2, 3); // 6 per page -> 3 pages
-        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let deck = Deck {
+            id: "d".into(),
+            name: "D".into(),
+            pages: vec![p.clone()],
+            ..Default::default()
+        };
         let at = |n: isize| preload_json(&deck, &p, g, n, crate::i18n::Lang::Es, None);
 
         assert!(at(-1).is_none(), "nothing before the first page");
@@ -491,7 +674,10 @@ mod tests {
         assert!(json.contains("\"type\":\"page_preload\""));
         assert!(!json.contains("\"type\":\"layout\""));
         assert!(json.contains("\"page\":1") && json.contains("\"pages\":3"));
-        assert!(json.contains("k6"), "page 1 of a 6-per-page grid starts at k6");
+        assert!(
+            json.contains("k6"),
+            "page 1 of a 6-per-page grid starts at k6"
+        );
     }
 
     // §4.1: a manual deck follows nothing, but the PC still has something in front of it. Auto
@@ -520,10 +706,22 @@ mod tests {
     #[test]
     fn a_manual_layout_can_name_the_app_in_front() {
         let p = page_of(3);
-        let deck = Deck { id: "d".into(), name: "D".into(), pages: vec![p.clone()], ..Default::default() };
+        let deck = Deck {
+            id: "d".into(),
+            name: "D".into(),
+            pages: vec![p.clone()],
+            ..Default::default()
+        };
         let grid = Grid::new(3, 5);
 
-        let named = layout_json(&deck, &p, grid, 0, crate::i18n::Lang::Es, Some(("Photoshop", "data:x")));
+        let named = layout_json(
+            &deck,
+            &p,
+            grid,
+            0,
+            crate::i18n::Lang::Es,
+            Some(("Photoshop", "data:x")),
+        );
         assert!(named.contains("\"appName\":\"Photoshop\""));
         assert!(named.contains("\"appIcon\":\"data:x\""));
 
@@ -550,6 +748,49 @@ mod tests {
             .map(|k| k.label)
             .collect();
         assert_eq!(seen, (0..15).map(|i| format!("k{i}")).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn four_arrows_are_laid_out_like_a_keyboard_without_losing_keys() {
+        let page = arrow_page(true);
+        let grid = Grid::new(3, 5);
+        let shown = keys_for(&page, grid, 0);
+        let at = |label| shown.iter().position(|key| key.label == label).unwrap();
+
+        let up = at("Up");
+        let down = at("Down");
+        let left = at("Left");
+        let right = at("Right");
+        assert_eq!(up + grid.cols, down, "Up sits directly above Down");
+        assert_eq!(left + 1, down, "Left sits immediately left of Down");
+        assert_eq!(down + 1, right, "Right sits immediately right of Down");
+        assert_eq!(
+            shown
+                .iter()
+                .filter(|key| key.kind == KeyKind::Action)
+                .count(),
+            12
+        );
+
+        // The visual permutation is also the press permutation: every displayed key resolves to
+        // its own action, never the key that occupied that cell before the arrows moved.
+        for (pos, key) in shown
+            .iter()
+            .enumerate()
+            .filter(|(_, key)| key.kind == KeyKind::Action)
+        {
+            assert_eq!(resolve(&page, grid, 0, pos).unwrap().action, key.action);
+        }
+    }
+
+    #[test]
+    fn an_up_down_pair_is_vertical_like_the_keyboard() {
+        let page = arrow_page(false);
+        let grid = Grid::new(3, 5);
+        let shown = keys_for(&page, grid, 0);
+        let up = shown.iter().position(|key| key.label == "Up").unwrap();
+        let down = shown.iter().position(|key| key.label == "Down").unwrap();
+        assert_eq!(up + grid.cols, down);
     }
 
     // Short last page is padded, so the client always draws a full grid.
@@ -596,8 +837,20 @@ mod tests {
             id: "p0".into(),
             name: String::new(),
             keys: vec![
-                Key { pos: 0, label: "a".into(), action: Some("a".into()), kind: KeyKind::Action, ..Default::default() },
-                Key { pos: 3, label: "d".into(), action: Some("d".into()), kind: KeyKind::Action, ..Default::default() },
+                Key {
+                    pos: 0,
+                    label: "a".into(),
+                    action: Some("a".into()),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                },
+                Key {
+                    pos: 3,
+                    label: "d".into(),
+                    action: Some("d".into()),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                },
             ],
         };
         let g = Grid::new(1, 4);
@@ -628,7 +881,11 @@ mod tests {
         // The fields that carry meaning are actually there, not merely equal-to-empty on both sides.
         let launcher = back.iter().find(|d| d.id == "launcher");
         if let Some(l) = launcher {
-            let key = l.pages[0].keys.iter().find(|k| k.pos == 1).expect("an app key");
+            let key = l.pages[0]
+                .keys
+                .iter()
+                .find(|k| k.pos == 1)
+                .expect("an app key");
             assert!(key.action.as_deref().unwrap_or("").starts_with("launch:"));
             assert!(key.hold.as_deref().unwrap_or("").starts_with("focus:"));
         }
@@ -637,15 +894,27 @@ mod tests {
     /// Every rule `validate` enforces is one the phone would otherwise hit as "nothing happens".
     #[test]
     fn validate_rejects_what_the_phone_could_not_resolve() {
-        let key = |pos: usize, kind: KeyKind| Key { pos, kind, ..Default::default() };
+        let key = |pos: usize, kind: KeyKind| Key {
+            pos,
+            kind,
+            ..Default::default()
+        };
         let act = |pos: usize| Key {
             pos,
             action: Some("ctrl+c".into()),
             kind: KeyKind::Action,
             ..Default::default()
         };
-        let deck = |pages: Vec<Page>| Deck { id: "d".into(), pages, ..Default::default() };
-        let page = |id: &str, keys: Vec<Key>| Page { id: id.into(), keys, ..Default::default() };
+        let deck = |pages: Vec<Page>| Deck {
+            id: "d".into(),
+            pages,
+            ..Default::default()
+        };
+        let page = |id: &str, keys: Vec<Key>| Page {
+            id: id.into(),
+            keys,
+            ..Default::default()
+        };
 
         assert!(validate(&[deck(vec![page("p0", vec![act(0), act(1)])])]).is_ok());
         assert!(validate(&[]).is_ok(), "no decks at all is not an error");
@@ -666,7 +935,11 @@ mod tests {
         // Structural: no pages, repeated page id, repeated deck id.
         assert!(validate(&[deck(vec![])]).is_err());
         assert!(validate(&[deck(vec![page("p0", vec![]), page("p0", vec![])])]).is_err());
-        assert!(validate(&[deck(vec![page("p0", vec![])]), deck(vec![page("p0", vec![])])]).is_err());
+        assert!(validate(&[
+            deck(vec![page("p0", vec![])]),
+            deck(vec![page("p0", vec![])])
+        ])
+        .is_err());
         // An empty key carries neither action nor target, and that is exactly what it is for.
         assert!(validate(&[deck(vec![page("p0", vec![key(0, KeyKind::Empty)])])]).is_ok());
 
@@ -676,10 +949,17 @@ mod tests {
             image: Some("x".repeat(bytes)),
             ..act(pos)
         };
-        assert!(validate(&[deck(vec![page("p0", (0..15).map(|i| with_image(i, 3_000)).collect())])]).is_ok());
+        assert!(validate(&[deck(vec![page(
+            "p0",
+            (0..15).map(|i| with_image(i, 3_000)).collect()
+        )])])
+        .is_ok());
         let fat = validate(&[deck(vec![page("p0", vec![with_image(0, 2_000_000)])])]);
         assert!(fat.is_err());
-        assert!(fat.unwrap_err().contains("one frame"), "the error has to say why");
+        assert!(
+            fat.unwrap_err().contains("one frame"),
+            "the error has to say why"
+        );
     }
 
     /// The whole F6 toggle contract in one place: the face swaps, `toggle` never travels, and the
@@ -712,14 +992,18 @@ mod tests {
 
         // Unticking "Second state" in the editor sends `"toggle": null`, not a missing field.
         // Rejecting that would mean a deck the user just edited can no longer be saved.
-        let off: Key = serde_json::from_str(r#"{"pos":0,"kind":"action","toggle":null}"#).expect("null toggle");
+        let off: Key = serde_json::from_str(r#"{"pos":0,"kind":"action","toggle":null}"#)
+            .expect("null toggle");
         assert!(off.toggle.is_none());
 
         let grid = Grid::new(2, 3); // six per page, so pos 6 is the first key of client page 1
         let off = layout_json(&deck, page, grid, 1, crate::i18n::Lang::Es, None);
         assert!(off.contains("Mute") && !off.contains("Unmute"));
         assert!(off.contains("\"on\":false"));
-        assert!(!off.contains("toggle"), "the spare face must not reach the phone");
+        assert!(
+            !off.contains("toggle"),
+            "the spare face must not reach the phone"
+        );
 
         // What a press would run, and what it does to the face.
         let key = resolve(page, grid, 1, 0).expect("the key");
@@ -746,22 +1030,41 @@ mod tests {
             pos,
             action: Some("wait:1".into()),
             kind: KeyKind::Action,
-            toggle: Some(crate::config::Face { label: "ON".into(), ..Default::default() }),
+            toggle: Some(crate::config::Face {
+                label: "ON".into(),
+                ..Default::default()
+            }),
             ..Default::default()
         };
-        let deck_of = |keys: Vec<Key>| vec![Deck {
-            id: "d".into(),
-            pages: vec![Page { id: "p0".into(), keys, ..Default::default() }],
-            ..Default::default()
-        }];
+        let deck_of = |keys: Vec<Key>| {
+            vec![Deck {
+                id: "d".into(),
+                pages: vec![Page {
+                    id: "p0".into(),
+                    keys,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }]
+        };
 
         // Key 1 loses its second state; key 0 keeps its own.
         let after = live_faces(&deck_of(vec![
             with_toggle(0),
-            Key { pos: 1, kind: KeyKind::Action, ..Default::default() },
+            Key {
+                pos: 1,
+                kind: KeyKind::Action,
+                ..Default::default()
+            },
         ]));
-        assert!(after.contains(&addr("d", "p0", 0)), "a toggle that still exists keeps its face");
-        assert!(!after.contains(&addr("d", "p0", 1)), "one that does not must not come back on");
+        assert!(
+            after.contains(&addr("d", "p0", 0)),
+            "a toggle that still exists keeps its face"
+        );
+        assert!(
+            !after.contains(&addr("d", "p0", 1)),
+            "one that does not must not come back on"
+        );
 
         // A deck that is gone takes every face on it.
         assert!(live_faces(&[]).is_empty());
@@ -798,13 +1101,19 @@ mod tests {
             label: "Record".into(),
             action: Some("obs:record".into()),
             kind: KeyKind::Action,
-            toggle: Some(crate::config::Face { label: "Stop".into(), ..Default::default() }),
+            toggle: Some(crate::config::Face {
+                label: "Stop".into(),
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let at = addr("d", "p0", 0);
         on_set().lock().unwrap().remove(&at); // memory says OFF
         assert_eq!(live_face(&key), Some(true), "OBS says recording");
-        assert!(face_is_on(&key, &at), "so the ON face shows regardless of memory");
+        assert!(
+            face_is_on(&key, &at),
+            "so the ON face shows regardless of memory"
+        );
 
         crate::engine::state::obs_state().lock().unwrap().connected = false;
     }

@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::config::{config, Key, KeyKind, Page};
 use crate::engine::deck::{self, Grid};
-use crate::engine::state::obs_state;
+use crate::engine::state::{codex_fast_mode, obs_state};
 use crate::i18n;
 use crate::platform;
 
@@ -13,9 +13,21 @@ use crate::platform;
 /// F2 replaces this with the real `Key` model; until then the tuple keeps the copy cheap.
 type RawButton = (usize, String, String, String, bool, bool);
 
+fn is_terminal_ai_profile(id: &str) -> bool {
+    matches!(id, "claude-code" | "codex-cli" | "gemini-cli" | "aider")
+}
+
+fn semantic_icon_color(profile_id: &str, icon: &str, codex_fast: bool) -> Option<String> {
+    if icon == "record" {
+        return Some("#FF5252".to_string());
+    }
+    (profile_id == "codex-desktop" && icon == "bolt")
+        .then(|| if codex_fast { "#FFD54A" } else { "#F2F2F2" }.to_string())
+}
+
 /// Builds the layout JSON for the given app, from the profiles. Matches against both the app
 /// name AND the window title (this enables per-tab sub-profiles, e.g. Google Sheets).
-/// `shell` = shell detected in the window's process tree (see `platform::detect_shell_kind`);
+/// `shell` = terminal profile detected in the window's process tree;
 /// it outranks the title, which lies when you run another shell inside a tab.
 pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -> AutoLayout {
     // Pick a profile and COPY its buttons (id, label, action, icon, danger, recommended); release
@@ -27,23 +39,41 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     let (profile_id, raw): (String, Vec<RawButton>) = {
         let cfg = config().lock().unwrap();
         let hay = format!("{app} {title}").to_lowercase();
-        // Priority: OBS live > AI agent by title > REAL detected shell > title > generic.
-        // The agent goes before the shell because it runs INSIDE the terminal and its buttons
-        // (Accept/Reject/Model) matter more than the shell hosting it.
-        let profile = if obs_live { cfg.profiles.iter().find(|p| p.id == "obs") } else { None }
-            .or_else(|| {
+        // Priority: OBS live > REAL detected AI agent > terminal AI by title > detected shell
+        // > ordinary title > generic. Exact process detection wins over a stale or customized
+        // terminal title. Terminal-only profiles are excluded from ordinary title matching:
+        // Claude Desktop and Claude Code share a name, but not a command vocabulary.
+        let profile = if obs_live {
+            cfg.profiles.iter().find(|p| p.id == "obs")
+        } else {
+            None
+        }
+        .or_else(|| {
+            shell
+                .filter(|id| is_terminal_ai_profile(id))
+                .and_then(|id| cfg.profiles.iter().find(|p| p.id == id))
+        })
+        .or_else(|| {
+            shell.and_then(|_| {
                 cfg.profiles.iter().find(|p| {
-                    p.id == "ai" && p.matches.iter().any(|m| hay.contains(&m.to_lowercase()))
+                    is_terminal_ai_profile(&p.id)
+                        && p.matches.iter().any(|m| hay.contains(&m.to_lowercase()))
                 })
             })
-            .or_else(|| shell.and_then(|id| cfg.profiles.iter().find(|p| p.id == id)))
-            .or_else(|| {
-                cfg.profiles
-                    .iter()
-                    .find(|p| p.matches.iter().any(|m| hay.contains(&m.to_lowercase())))
+        })
+        .or_else(|| {
+            shell
+                .filter(|id| !is_terminal_ai_profile(id))
+                .and_then(|id| cfg.profiles.iter().find(|p| p.id == id))
+        })
+        .or_else(|| {
+            cfg.profiles.iter().find(|p| {
+                !is_terminal_ai_profile(&p.id)
+                    && p.matches.iter().any(|m| hay.contains(&m.to_lowercase()))
             })
-            .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
-            .or_else(|| cfg.profiles.last());
+        })
+        .or_else(|| cfg.profiles.iter().find(|p| p.matches.is_empty()))
+        .or_else(|| cfg.profiles.last());
         match profile {
             Some(p) => (
                 p.id.clone(),
@@ -51,7 +81,14 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
                     .iter()
                     .enumerate()
                     .map(|(i, b)| {
-                        (i, b.label.clone(), b.action.clone(), b.icon.clone(), b.danger, b.recommended)
+                        (
+                            i,
+                            b.label.clone(),
+                            b.action.clone(),
+                            b.icon.clone(),
+                            b.danger,
+                            b.recommended,
+                        )
                     })
                     .collect(),
             ),
@@ -61,6 +98,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     // Hide uia buttons whose control is disabled right now (dynamic app state: e.g. "Crop" only
     // enables once a selection is made).
     let disabled = platform::uia_disabled_actions(&raw);
+    let codex_fast = profile_id == "codex-desktop" && codex_fast_mode();
     let mut buttons: Vec<(bool, Key)> = raw
         .iter()
         .filter(|(_, _, action, _, _, _)| !disabled.contains(action))
@@ -69,6 +107,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
             !(action == "obs:mic" && obs.connected && obs.mic_name.is_empty())
         })
         .map(|(i, label, action, icon, danger, rec)| {
+            let is_gap = label.is_empty() && icon.is_empty() && action.is_empty();
             // Live state for OBS buttons (REC on, mic muted...).
             let on = if obs.connected {
                 match action.as_str() {
@@ -81,6 +120,7 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
             } else {
                 None
             };
+            let icon_color = semantic_icon_color(&profile_id, icon, codex_fast);
             // Dynamic label: the toggle says what it's ABOUT TO DO, not what it is.
             let label = match (action.as_str(), on) {
                 ("obs:record", Some(true)) => "Detener grab.",
@@ -111,10 +151,15 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
                     pos: *i,
                     label: label.to_string(),
                     icon: icon.clone(),
-                    action: Some(action_out),
+                    icon_color,
+                    action: (!is_gap).then_some(action_out),
                     danger: *danger,
                     state: on.map(|on| json!({ "on": on })),
-                    kind: KeyKind::Action,
+                    kind: if is_gap {
+                        KeyKind::Empty
+                    } else {
+                        KeyKind::Action
+                    },
                     ..Default::default()
                 },
             )
@@ -141,7 +186,6 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     // onto later pages instead of pushing useful keys off the first screen. Stable: within each
     // group the catalogue's authored order is kept.
     buttons.sort_by_key(|(rec, _)| !rec);
-    pin_close_app(&mut buttons);
     let keys = buttons
         .into_iter()
         .enumerate()
@@ -152,34 +196,13 @@ pub fn layout_for(app: &str, title: &str, icon_b64: &str, shell: Option<&str>) -
     let sys = platform::system_volume()
         .map(|(vol, muted)| json!({ "vol": vol, "muted": muted }))
         .unwrap_or(serde_json::Value::Null);
-    AutoLayout { profile_id, app_name: app.to_string(), app_icon: icon_b64.to_string(), keys, sys }
-}
-
-/// The one key that sits in the same cell on every profile: **third of the first row**, page 0.
-///
-/// Every one of the ~100 profiles carries "Cerrar app", and the recommended-first sort left it
-/// wherever the profile's own list happened to put it — third on two profiles, tenth on another.
-/// A key you reach for without looking has to be in the same place every time, and this one is
-/// `danger` as well: hunting for it is how you close the wrong thing.
-///
-/// Pinning the POSITION is enough for both orientations: the grid transposes (5×3 upright, 3×5
-/// sideways) but the addressing does not, so cell 2 is the third of the first row either way.
-fn pin_close_app(buttons: &mut Vec<(bool, Key)>) {
-    /// Identified by its ACTION, not its label: the label is translated at render time, and the
-    /// editor lets a user rename the key without it stopping being the close key.
-    const CLOSE_APP: &str = "alt+F4";
-    const CLOSE_AT: usize = 2;
-    let Some(at) =
-        buttons.iter().position(|(_, k)| {
-            k.action.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(CLOSE_APP))
-        })
-    else {
-        return;
-    };
-    let key = buttons.remove(at);
-    // A profile with fewer keys than that puts it last rather than leaving a hole before it.
-    let at = CLOSE_AT.min(buttons.len());
-    buttons.insert(at, key);
+    AutoLayout {
+        profile_id,
+        app_name: app.to_string(),
+        app_icon: icon_b64.to_string(),
+        keys,
+        sys,
+    }
 }
 
 /// The resolved auto-mode layout, before pagination.
@@ -202,7 +225,11 @@ pub struct AutoLayout {
 impl AutoLayout {
     /// Same page/key addressing as a deck, so `key` presses resolve identically in both modes.
     pub(crate) fn as_page(&self) -> Page {
-        Page { id: self.profile_id.clone(), name: String::new(), keys: self.keys.clone() }
+        Page {
+            id: self.profile_id.clone(),
+            name: String::new(),
+            keys: self.keys.clone(),
+        }
     }
 }
 
@@ -298,8 +325,7 @@ pub async fn watch_active_app() {
             })
             .await
             .unwrap_or_default();
-            let apps: String =
-                open.iter().map(|b| if *b { '1' } else { '0' }).collect();
+            let apps: String = open.iter().map(|b| if *b { '1' } else { '0' }).collect();
             if apps != last_apps {
                 last_apps = apps;
                 crate::net::ws::push_manual_layouts();
@@ -309,7 +335,12 @@ pub async fn watch_active_app() {
             let o = obs_state().lock().unwrap();
             format!(
                 "{}|{}|{}|{}|{}|{}",
-                o.connected, o.recording, o.streaming, o.replay_active, o.mic_muted, o.current_scene
+                o.connected,
+                o.recording,
+                o.streaming,
+                o.replay_active,
+                o.mic_muted,
+                o.current_scene
             )
         };
         if live != last_live {
@@ -334,10 +365,12 @@ pub async fn watch_active_app() {
         crate::engine::windows::touch(platform::foreground_window());
         let layout = {
             let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
-            // detect_shell_kind walks the process tree -> onto the blocking thread, like the rest.
-            tokio::task::spawn_blocking(move || layout_for(&a, &t, &ic, platform::detect_shell_kind(pid, &t)))
-                .await
-                .unwrap_or_default()
+            // Terminal detection walks the process tree -> onto the blocking thread, like the rest.
+            tokio::task::spawn_blocking(move || {
+                layout_for(&a, &t, &ic, platform::detect_terminal_profile(pid, &t))
+            })
+            .await
+            .unwrap_or_default()
         };
         // Rendered on the reference grid purely to detect change; every connection re-renders it
         // for its own grid on the way out.
@@ -361,57 +394,103 @@ pub async fn watch_active_app() {
 mod tests {
     use super::*;
 
-    fn button(label: &str, action: &str, rec: bool) -> (bool, Key) {
-        (
-            rec,
-            Key {
-                label: label.into(),
-                action: Some(action.into()),
-                kind: KeyKind::Action,
-                ..Default::default()
-            },
-        )
-    }
-
-    fn labels(buttons: &[(bool, Key)]) -> Vec<&str> {
-        buttons.iter().map(|(_, k)| k.label.as_str()).collect()
+    #[test]
+    fn semantic_colours_cover_record_and_codex_speed() {
+        assert_eq!(
+            semantic_icon_color("codex-desktop", "bolt", true).as_deref(),
+            Some("#FFD54A")
+        );
+        assert_eq!(
+            semantic_icon_color("codex-desktop", "bolt", false).as_deref(),
+            Some("#F2F2F2")
+        );
+        assert_eq!(
+            semantic_icon_color("obs", "record", false).as_deref(),
+            Some("#FF5252")
+        );
+        assert_eq!(semantic_icon_color("codex-desktop", "play", true), None);
+        assert_eq!(semantic_icon_color("browser", "bolt", true), None);
     }
 
     #[test]
-    fn close_app_lands_on_the_third_cell_whatever_the_profile_says() {
-        // The real shape: "Cerrar app" authored last but recommended, so the sort puts it fifth.
-        let mut b = vec![
-            button("Copiar", "ctrl+c", true),
-            button("Pegar", "ctrl+v", true),
-            button("Nueva carpeta", "ctrl+shift+n", true),
-            button("Renombrar", "f2", true),
-            button("Cerrar app", "alt+F4", true),
-            button("Cortar", "ctrl+x", false),
-        ];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b), ["Copiar", "Pegar", "Cerrar app", "Nueva carpeta", "Renombrar", "Cortar"]);
-        // Idempotent: it is already there, and re-pinning must not rotate the pad every 500 ms.
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b)[2], "Cerrar app");
+    fn the_shared_ai_board_map_survives_rotation_and_deliberate_gaps() {
+        let layout = layout_for("claude", "Claude", "", None);
+        assert_eq!(layout.profile_id, "claude-desktop");
+
+        let labels_at = |grid: Grid| {
+            deck::keys_for(&layout.as_page(), grid.reserving(3), 0)
+                .into_iter()
+                .map(|key| key.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels_at(Grid::new(5, 3)),
+            [
+                "",
+                "Dictar",
+                "Sel. todo",
+                "Nueva línea",
+                "Copiar",
+                "Pegar",
+                "Enviar",
+                "Subir",
+                "Cancelar",
+                "Izquierda",
+                "Bajar",
+                "Derecha",
+            ]
+        );
+        assert_eq!(
+            labels_at(Grid::new(3, 5)),
+            [
+                "",
+                "Dictar",
+                "Sel. todo",
+                "Subir",
+                "Nueva línea",
+                "Copiar",
+                "Pegar",
+                "Izquierda",
+                "Bajar",
+                "Derecha",
+                "Enviar",
+                "Cancelar",
+            ]
+        );
     }
 
-    /// The editor writes whatever the user typed, and `alt+f4` is the same key.
     #[test]
-    fn the_action_is_matched_however_it_was_typed() {
-        let mut b = vec![button("a", "ctrl+c", true), button("Cerrar", "alt+f4", false)];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b)[1], "Cerrar", "two keys: last is as close to third as it gets");
+    fn terminal_agents_and_desktop_apps_with_the_same_name_get_different_boards() {
+        assert_eq!(
+            layout_for("WindowsTerminal", "Claude", "", Some("shell-pwsh")).profile_id,
+            "claude-code"
+        );
+        assert_eq!(
+            layout_for("claude", "Claude", "", None).profile_id,
+            "claude-desktop"
+        );
+
+        assert_eq!(
+            layout_for("WindowsTerminal", "codex — repo", "", Some("shell-pwsh")).profile_id,
+            "codex-cli"
+        );
+        assert_eq!(
+            layout_for("ChatGPT", "Codex", "", None).profile_id,
+            "codex-desktop"
+        );
     }
 
-    /// A profile with no close key at all (and one whose `uia:` keys were all filtered out) must
-    /// come back unchanged rather than shuffled.
     #[test]
-    fn a_profile_without_one_is_left_alone() {
-        let mut b = vec![button("a", "ctrl+c", true), button("b", "ctrl+v", true)];
-        pin_close_app(&mut b);
-        assert_eq!(labels(&b), ["a", "b"]);
-        let mut empty: Vec<(bool, Key)> = vec![];
-        pin_close_app(&mut empty);
-        assert!(empty.is_empty());
+    fn a_plain_terminal_still_gets_its_shell_board() {
+        assert_eq!(
+            layout_for(
+                "WindowsTerminal",
+                "Windows PowerShell",
+                "",
+                Some("shell-pwsh")
+            )
+            .profile_id,
+            "shell-pwsh"
+        );
     }
 }

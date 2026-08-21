@@ -65,7 +65,10 @@ pub fn choose(action: &str, option: Option<usize>, text: Option<&str>) -> Option
 /// The nth `Name=value` of a `;`-separated list. Split on the FIRST `=` only: a value is an action
 /// chain and carries plenty more of them.
 fn branch(list: &str, at: usize) -> Option<(&str, &str)> {
-    list.split(';').nth(at)?.split_once('=').map(|(name, value)| (name.trim(), value))
+    list.split(';')
+        .nth(at)?
+        .split_once('=')
+        .map(|(name, value)| (name.trim(), value))
 }
 
 /// A single atomic step: screenshot, UIA button, literal text, or a keyboard shortcut.
@@ -106,16 +109,29 @@ pub fn run_step(step: &str) -> Result<(), &'static str> {
         let dx: i32 = dx.trim().parse().map_err(|_| "bad_mouse")?;
         let dy: i32 = dy.trim().parse().map_err(|_| "bad_mouse")?;
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
-        return e.move_mouse(dx, dy, Coordinate::Rel).map_err(|_| "internal");
+        return e
+            .move_mouse(dx, dy, Coordinate::Rel)
+            .map_err(|_| "internal");
     }
     // "hold:left|right" / "release:left|right" -> press-and-hold/release the button, for DRAGGING
     // (moving windows, selecting text, dragging files). The phone sends these from the trackpad's
     // "Drag" button. NOTE: if the button stays pressed the desktop becomes unusable, so the phone
     // always releases when leaving the trackpad.
-    if let Some(which) = step.strip_prefix("hold:").or_else(|| step.strip_prefix("release:")) {
+    if let Some(which) = step
+        .strip_prefix("hold:")
+        .or_else(|| step.strip_prefix("release:"))
+    {
         use enigo::{Button, Direction, Enigo, Mouse, Settings};
-        let btn = if which.trim() == "right" { Button::Right } else { Button::Left };
-        let dir = if step.starts_with("hold:") { Direction::Press } else { Direction::Release };
+        let btn = if which.trim() == "right" {
+            Button::Right
+        } else {
+            Button::Left
+        };
+        let dir = if step.starts_with("hold:") {
+            Direction::Press
+        } else {
+            Direction::Release
+        };
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
         return e.button(btn, dir).map_err(|_| "internal");
     }
@@ -141,7 +157,8 @@ pub fn run_step(step: &str) -> Result<(), &'static str> {
         use enigo::{Axis, Direction, Enigo, Key, Keyboard, Mouse, Settings};
         let steps: i32 = n.trim().parse().map_err(|_| "bad_zoom")?;
         let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
-        e.key(Key::Control, Direction::Press).map_err(|_| "internal")?;
+        e.key(Key::Control, Direction::Press)
+            .map_err(|_| "internal")?;
         let r = e.scroll(-steps, Axis::Vertical); // wheel up (negative n) = zoom in
         let _ = e.key(Key::Control, Direction::Release);
         return r.map_err(|_| "internal");
@@ -187,12 +204,19 @@ pub fn run_step(step: &str) -> Result<(), &'static str> {
 /// Runs a shortcut like "ctrl+shift+p", "alt+F4", "ctrl+c".
 fn run_hotkey(combo: &str) -> Result<(), &'static str> {
     use enigo::{Direction::*, Enigo, Keyboard, Settings};
-    let parts: Vec<&str> = combo.split('+').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = combo
+        .split('+')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
     if parts.is_empty() {
         return Err("bad_keys");
     }
     let (key_tok, mod_toks) = parts.split_last().unwrap();
-    let mods: Vec<enigo::Key> = mod_toks.iter().map(|m| parse_modifier(m)).collect::<Result<_, _>>()?;
+    let mods: Vec<enigo::Key> = mod_toks
+        .iter()
+        .map(|m| parse_modifier(m))
+        .collect::<Result<_, _>>()?;
     let key = parse_key(key_tok)?;
     let mut e = Enigo::new(&Settings::default()).map_err(|_| "internal")?;
     for m in &mods {
@@ -231,9 +255,18 @@ fn parse_key(tok: &str) -> Result<enigo::Key, &'static str> {
     // Function keys f1..f12
     if let Some(n) = t.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()) {
         return match n {
-            1 => Ok(Key::F1), 2 => Ok(Key::F2), 3 => Ok(Key::F3), 4 => Ok(Key::F4),
-            5 => Ok(Key::F5), 6 => Ok(Key::F6), 7 => Ok(Key::F7), 8 => Ok(Key::F8),
-            9 => Ok(Key::F9), 10 => Ok(Key::F10), 11 => Ok(Key::F11), 12 => Ok(Key::F12),
+            1 => Ok(Key::F1),
+            2 => Ok(Key::F2),
+            3 => Ok(Key::F3),
+            4 => Ok(Key::F4),
+            5 => Ok(Key::F5),
+            6 => Ok(Key::F6),
+            7 => Ok(Key::F7),
+            8 => Ok(Key::F8),
+            9 => Ok(Key::F9),
+            10 => Ok(Key::F10),
+            11 => Ok(Key::F11),
+            12 => Ok(Key::F12),
             _ => Err("bad_key"),
         };
     }
@@ -304,8 +337,15 @@ mod tests {
     #[test]
     fn a_prompt_fills_the_hole_and_refuses_to_open_a_step() {
         let a = "prompt:Nombre de la carpeta=type:mkdir {}>>enter";
-        assert_eq!(choose(a, None, Some("informes")).as_deref(), Some("type:mkdir informes>>enter"));
-        assert_eq!(choose(a, None, Some("  ")), None, "empty is not a folder name");
+        assert_eq!(
+            choose(a, None, Some("informes")).as_deref(),
+            Some("type:mkdir informes>>enter")
+        );
+        assert_eq!(
+            choose(a, None, Some("  ")),
+            None,
+            "empty is not a folder name"
+        );
         assert_eq!(choose(a, None, None), None);
         assert_eq!(
             choose(a, None, Some("x>>ctrl+s")),
@@ -318,7 +358,10 @@ mod tests {
     #[test]
     fn anything_else_is_returned_as_it_came() {
         assert_eq!(choose("ctrl+c", None, None).as_deref(), Some("ctrl+c"));
-        assert_eq!(choose("ctrl+c", Some(3), Some("x")).as_deref(), Some("ctrl+c"));
+        assert_eq!(
+            choose("ctrl+c", Some(3), Some("x")).as_deref(),
+            Some("ctrl+c")
+        );
     }
 
     #[test]
@@ -329,7 +372,14 @@ mod tests {
         assert!(parse_key("left").is_ok());
         assert!(parse_key("nope").is_err());
         // System media tokens
-        for t in ["volup", "voldown", "volmute", "playpause", "nexttrack", "prevtrack"] {
+        for t in [
+            "volup",
+            "voldown",
+            "volmute",
+            "playpause",
+            "nexttrack",
+            "prevtrack",
+        ] {
             assert!(parse_key(t).is_ok(), "media token {t}");
         }
     }

@@ -1,6 +1,6 @@
 <script>
   import { getCatalogue, dropCatalogueItem } from "./store.svelte.js";
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
   import { t } from "./i18n.js";
 
   let { deckId, pageId, pos, onclose } = $props();
@@ -38,7 +38,7 @@
               {#if item.image}
                 <img src={item.image} alt="" />
               {:else}
-                {iconGlyph(item.icon)}
+                <IconGlyph name={item.icon} />
               {/if}
             </span>
             {item.label}

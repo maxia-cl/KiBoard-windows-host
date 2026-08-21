@@ -1,6 +1,6 @@
 <script>
   import { getCatalogue, assignToSelection } from "./store.svelte.js";
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
   import { startCatalogueDrag, onDragMove, endDrag } from "./dnd.svelte.js";
   import { t } from "./i18n.js";
 
@@ -54,7 +54,7 @@
             {#if item.image}
               <img src={item.image} alt="" draggable="false" />
             {:else}
-              {iconGlyph(item.icon)}
+              <IconGlyph name={item.icon} />
             {/if}
           </span>
           <span class="label">{item.label}</span>

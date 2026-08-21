@@ -18,7 +18,7 @@ pub use stub::*;
 
 /// Which shell is running INSIDE the foreground window, given its process tree. Pure (no OS
 /// calls), so it compiles and tests identically on every target — only gathering the process
-/// list (`detect_shell_kind`) is platform-specific.
+/// list (`detect_terminal_profile`) is platform-specific.
 ///
 /// Why the window title isn't enough: Windows Terminal changes it per tab, but it LIES the
 /// moment you run another shell inside (a `wsl` inside a pwsh tab leaves the title saying
@@ -46,18 +46,73 @@ const TERMINALS: &[&str] = &[
     "hyper.exe",
 ];
 
-pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> Option<&'static str> {
-    fn kind_of(exe: &str) -> Option<&'static str> {
-        match exe {
-            "powershell.exe" | "pwsh.exe" => Some("shell-pwsh"),
-            "cmd.exe" => Some("shell-cmd"),
-            // wsl.exe/ubuntu.exe are Windows processes even though the shell lives in the VM.
-            "bash.exe" | "wsl.exe" | "ubuntu.exe" | "debian.exe" | "zsh.exe" | "fish.exe" => {
-                Some("shell-bash")
+fn shell_kind(exe: &str) -> Option<&'static str> {
+    match exe {
+        "powershell.exe" | "pwsh.exe" => Some("shell-pwsh"),
+        "cmd.exe" => Some("shell-cmd"),
+        // wsl.exe/ubuntu.exe are Windows processes even though the shell lives in the VM.
+        "bash.exe" | "wsl.exe" | "ubuntu.exe" | "debian.exe" | "zsh.exe" | "fish.exe" => {
+            Some("shell-bash")
+        }
+        _ => None,
+    }
+}
+
+fn is_terminal(exe: &str) -> bool {
+    shell_kind(exe).is_some() || TERMINALS.contains(&exe)
+}
+
+fn agent_kind(exe: &str) -> Option<&'static str> {
+    match exe {
+        "claude.exe" => Some("claude-code"),
+        "codex.exe" => Some("codex-cli"),
+        "gemini.exe" => Some("gemini-cli"),
+        "aider.exe" => Some("aider"),
+        _ => None,
+    }
+}
+
+/// An AI agent running inside a real terminal window. Exact child processes beat title matching,
+/// but only when the foreground window itself is a terminal: ChatGPT Desktop also hosts a
+/// `codex.exe`, and that must not turn the graphical app into the Codex CLI board.
+pub fn pick_terminal_agent(procs: &[(u32, u32, String)], root_pid: u32) -> Option<&'static str> {
+    let root_exe = procs
+        .iter()
+        .find(|(pid, _, _)| *pid == root_pid)
+        .map(|(_, _, exe)| exe.as_str())?;
+    if !is_terminal(root_exe) {
+        return None;
+    }
+    let mut queue: Vec<(u32, u32)> = vec![(root_pid, 0)];
+    let mut seen = vec![root_pid];
+    let mut found: Vec<(&'static str, u32)> = Vec::new();
+    let mut i = 0;
+    while i < queue.len() && i < 400 {
+        let (pid, depth) = queue[i];
+        i += 1;
+        for (p, parent, exe) in procs {
+            if *p == pid {
+                if let Some(agent) = agent_kind(exe) {
+                    found.push((agent, depth));
+                }
             }
-            _ => None,
+            if *parent == pid && !seen.contains(p) {
+                seen.push(*p);
+                queue.push((*p, depth + 1));
+            }
         }
     }
+    found
+        .into_iter()
+        .max_by_key(|(_, depth)| *depth)
+        .map(|(agent, _)| agent)
+}
+
+pub fn pick_shell(
+    procs: &[(u32, u32, String)],
+    root_pid: u32,
+    title: &str,
+) -> Option<&'static str> {
     // The window's OWN process has to be a terminal, or this reads somebody else's shell.
     //
     // Every window was being searched, and a shell ANYWHERE below it won — which is a tree most
@@ -66,8 +121,11 @@ pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> O
     // and the taskbar are worse: they belong to the shell's own `explorer.exe`, the parent of every
     // app the user has ever launched from it, so any script or installer running anywhere on the
     // machine renamed the desktop for as long as it lived.
-    let root_exe = procs.iter().find(|(pid, _, _)| *pid == root_pid).map(|(_, _, exe)| exe.as_str())?;
-    if kind_of(root_exe).is_none() && !TERMINALS.contains(&root_exe) {
+    let root_exe = procs
+        .iter()
+        .find(|(pid, _, _)| *pid == root_pid)
+        .map(|(_, _, exe)| exe.as_str())?;
+    if !is_terminal(root_exe) {
         return None;
     }
     // Breadth-first, tracking DEPTH (the window's own process counts — a bare console IS the shell).
@@ -80,7 +138,7 @@ pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> O
         i += 1;
         for (p, parent, exe) in procs {
             if *p == pid {
-                if let Some(k) = kind_of(exe) {
+                if let Some(k) = shell_kind(exe) {
                     found.push((k, depth));
                 }
             }
@@ -113,18 +171,24 @@ pub fn pick_shell(procs: &[(u32, u32, String)], root_pid: u32, title: &str) -> O
                 .any(|s| t.contains(s)),
             "shell-pwsh" => t.contains("powershell") || t.contains("pwsh"),
             "shell-cmd" => {
-                t.contains("cmd") || t.contains("símbolo del sistema") || t.contains("command prompt")
+                t.contains("cmd")
+                    || t.contains("símbolo del sistema")
+                    || t.contains("command prompt")
             }
             _ => false,
         }
     };
     let matches: Vec<&&str> = deepest.iter().filter(|k| hint(k)).collect();
-    if matches.len() == 1 { Some(*matches[0]) } else { None }
+    if matches.len() == 1 {
+        Some(*matches[0])
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pick_shell;
+    use super::{pick_shell, pick_terminal_agent};
 
     fn procs(v: &[(u32, u32, &str)]) -> Vec<(u32, u32, String)> {
         v.iter().map(|(a, b, c)| (*a, *b, c.to_string())).collect()
@@ -141,7 +205,10 @@ mod tests {
             (15792, 12516, "wsl.exe"),
             (14856, 15792, "wsl.exe"),
         ]);
-        assert_eq!(pick_shell(&p, 12656, "Windows PowerShell"), Some("shell-bash"));
+        assert_eq!(
+            pick_shell(&p, 12656, "Windows PowerShell"),
+            Some("shell-bash")
+        );
     }
 
     /// Two tabs with different shells: same depth -> the title (which does reflect the active
@@ -153,8 +220,14 @@ mod tests {
             (200, 100, "powershell.exe"),
             (300, 100, "wsl.exe"),
         ]);
-        assert_eq!(pick_shell(&p, 100, "Windows PowerShell"), Some("shell-pwsh"));
-        assert_eq!(pick_shell(&p, 100, "ricardo@DESKTOP: ~"), Some("shell-bash"));
+        assert_eq!(
+            pick_shell(&p, 100, "Windows PowerShell"),
+            Some("shell-pwsh")
+        );
+        assert_eq!(
+            pick_shell(&p, 100, "ricardo@DESKTOP: ~"),
+            Some("shell-bash")
+        );
         assert_eq!(pick_shell(&p, 100, "Ubuntu"), Some("shell-bash"));
         assert_eq!(pick_shell(&p, 100, "no hints here"), None); // don't guess
     }
@@ -187,7 +260,25 @@ mod tests {
         ]);
         assert_eq!(pick_shell(&p2, 5544, "Escritorio"), None);
         // The terminal itself still answers, from the same tree.
-        assert_eq!(pick_shell(&p2, 12656, "Windows PowerShell"), Some("shell-pwsh"));
+        assert_eq!(
+            pick_shell(&p2, 12656, "Windows PowerShell"),
+            Some("shell-pwsh")
+        );
+    }
+
+    #[test]
+    fn an_agent_process_only_counts_below_a_terminal_window() {
+        let terminal = procs(&[
+            (100, 1, "windowsterminal.exe"),
+            (200, 100, "powershell.exe"),
+            (300, 200, "codex.exe"),
+        ]);
+        assert_eq!(pick_terminal_agent(&terminal, 100), Some("codex-cli"));
+
+        // The installed ChatGPT/Codex desktop app has this real shape: its graphical root owns a
+        // helper named codex.exe. Product and surface are separate axes.
+        let desktop = procs(&[(400, 1, "chatgpt.exe"), (500, 400, "codex.exe")]);
+        assert_eq!(pick_terminal_agent(&desktop, 400), None);
     }
 
     /// A process the snapshot does not list (it exited between the poll and the walk) is not a
@@ -204,6 +295,9 @@ mod tests {
     fn probe_shell() {
         let pid: u32 = std::env::var("PID").unwrap().parse().unwrap();
         let title = std::env::var("TITLE").unwrap_or_default();
-        println!("PID {pid} -> {:?}", super::detect_shell_kind(pid, &title));
+        println!(
+            "PID {pid} -> {:?}",
+            super::detect_terminal_profile(pid, &title)
+        );
     }
 }

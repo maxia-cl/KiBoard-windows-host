@@ -1,6 +1,6 @@
 <script>
   import { getSelection, updateKeyFields, testKey, resolveScope } from "./store.svelte.js";
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
   import IconPicker from "./IconPicker.svelte";
   import { t } from "./i18n.js";
 
@@ -68,7 +68,7 @@
       {#if key.image}
         <img src={key.image} alt="" />
       {:else}
-        <span class="glyph">{iconGlyph(key.icon)}</span>
+        <span class="glyph"><IconGlyph name={key.icon} color={key.iconColor} /></span>
       {/if}
     </div>
 
@@ -80,7 +80,7 @@
     <label>
       {t("insp.icon")}
       <button class="icon-btn" onclick={() => (picking = "icon")}>
-        {iconGlyph(key.icon)} {t("insp.change")}
+        <IconGlyph name={key.icon} /> {t("insp.change")}
       </button>
     </label>
 
@@ -93,7 +93,7 @@
           onchange={(e) => pickImage(e.currentTarget.files?.[0], (img) => set("image", img))}
         />
         {#if key.image}
-          <button class="icon-btn" onclick={() => set("image", null)} title={t("insp.backtoicon")}>✕</button>
+          <button class="icon-btn" onclick={() => set("image", null)} title={t("insp.backtoicon")}>×</button>
         {/if}
       </div>
     </label>
@@ -114,7 +114,7 @@
               oninput={(e) => set("action", setStep(key.action, i, e.currentTarget.value))}
             />
             {#if steps(key.action).length > 1}
-              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title={t("insp.removestep")}>✕</button>
+              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title={t("insp.removestep")}>×</button>
             {/if}
           </div>
         {/each}
@@ -150,7 +150,7 @@
           />
           <div class="row">
             <button class="icon-btn grow" onclick={() => (picking = "toggle-icon")}>
-              {iconGlyph(key.toggle.icon)} {t("insp.faceicon")}
+              <IconGlyph name={key.toggle.icon} /> {t("insp.faceicon")}
             </button>
             <input
               type="color"

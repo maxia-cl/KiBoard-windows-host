@@ -12,7 +12,9 @@ static DAEMON: OnceLock<Option<mdns_sd::ServiceDaemon>> = OnceLock::new();
 static REGISTERED: Mutex<Option<String>> = Mutex::new(None);
 
 fn daemon() -> Option<&'static mdns_sd::ServiceDaemon> {
-    DAEMON.get_or_init(|| mdns_sd::ServiceDaemon::new().ok()).as_ref()
+    DAEMON
+        .get_or_init(|| mdns_sd::ServiceDaemon::new().ok())
+        .as_ref()
 }
 
 /// (Re)advertises the host. Call at startup and whenever a TXT field changes (pairing
@@ -45,8 +47,15 @@ pub(crate) fn advertise(mode: &str) {
     if let Some(prev) = REGISTERED.lock().unwrap().take() {
         let _ = daemon.unregister(&prev);
     }
-    match mdns_sd::ServiceInfo::new("_kiboard._tcp.local.", &instance, &hostname, "", WS_PORT, &props[..])
-        .map(|i| i.enable_addr_auto())
+    match mdns_sd::ServiceInfo::new(
+        "_kiboard._tcp.local.",
+        &instance,
+        &hostname,
+        "",
+        WS_PORT,
+        &props[..],
+    )
+    .map(|i| i.enable_addr_auto())
     {
         Ok(info) => {
             let fullname = info.get_fullname().to_string();

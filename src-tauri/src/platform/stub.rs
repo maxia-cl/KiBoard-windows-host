@@ -6,7 +6,7 @@ pub fn extract_icon_b64(_path: &str) -> String {
     String::new()
 }
 
-pub fn detect_shell_kind(_root_pid: u32, _title: &str) -> Option<&'static str> {
+pub fn detect_terminal_profile(_root_pid: u32, _title: &str) -> Option<&'static str> {
     None
 }
 

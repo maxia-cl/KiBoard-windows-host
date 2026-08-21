@@ -32,8 +32,16 @@ pub fn tr(lang: Lang, label: &str) -> &str {
     match lang {
         // ponytail: linear search over ~200 entries per layout — irrelevant; a HashMap if the
         // catalogue ever grows 10x.
-        Lang::En => TABLE.iter().find(|e| e.0 == label).map(|e| e.1).unwrap_or(label),
-        Lang::Zh => TABLE.iter().find(|e| e.0 == label).map(|e| e.2).unwrap_or(label),
+        Lang::En => TABLE
+            .iter()
+            .find(|e| e.0 == label)
+            .map(|e| e.1)
+            .unwrap_or(label),
+        Lang::Zh => TABLE
+            .iter()
+            .find(|e| e.0 == label)
+            .map(|e| e.2)
+            .unwrap_or(label),
         Lang::Es => label,
     }
 }
@@ -81,9 +89,24 @@ pub fn ui(key: &str) -> &'static str {
 
 /// (key, es, en, zh-Hans)
 static UI: &[(&str, &str, &str, &str)] = &[
-    ("tray.open", "Abrir KiBoard…", "Open KiBoard…", "打开 KiBoard…"),
-    ("tray.unpair", "Desvincular todo", "Unpair everything", "解除所有配对"),
-    ("tray.quit", "Salir de KiBoard", "Quit KiBoard", "退出 KiBoard"),
+    (
+        "tray.open",
+        "Abrir KiBoard…",
+        "Open KiBoard…",
+        "打开 KiBoard…",
+    ),
+    (
+        "tray.unpair",
+        "Desvincular todo",
+        "Unpair everything",
+        "解除所有配对",
+    ),
+    (
+        "tray.quit",
+        "Salir de KiBoard",
+        "Quit KiBoard",
+        "退出 KiBoard",
+    ),
 ];
 
 /// (es, en, zh-Hans). Covers every label from default_profiles + OBS' dynamic ones.
@@ -97,6 +120,8 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Agrupar", "Group", "编组"),
     ("Aleatorio", "Shuffle", "随机播放"),
     ("Anterior", "Previous", "上一个"),
+    ("Aprobaciones", "Approvals", "审批"),
+    ("Arquitecto", "Architect", "架构"),
     ("Archivar", "Archive", "归档"),
     ("Archivos", "Files", "文件"),
     ("Asignar", "Assign", "分配"),
@@ -137,6 +162,9 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Comentar", "Comment", "注释"),
     ("Compartir", "Share", "分享"),
     ("Copiar", "Copy", "复制"),
+    ("Commit", "Commit", "提交"),
+    ("Compactar", "Compact", "压缩上下文"),
+    ("Código", "Code", "代码"),
     ("Cortar", "Cut", "剪切"),
     ("Cortar directo", "End stream", "结束直播"),
     ("Crear", "Create", "创建"),
@@ -145,7 +173,10 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Cámara", "Camera", "摄像头"),
     ("Círculo", "Circle", "圆形"),
     ("Descargas", "Downloads", "下载"),
+    ("Detener", "Stop", "停止"),
+    ("Diferencias", "Diff", "差异"),
     ("Desde actual", "From current", "从当前"),
+    ("Derecha", "Right", "右"),
     ("Deshacer", "Undo", "撤销"),
     ("Destacar", "Star", "加星"),
     ("Detener grab.", "Stop rec.", "停止录制"),
@@ -169,6 +200,8 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Enviar", "Send", "发送"),
     ("Escena actual", "Current scene", "当前场景"),
     ("Esfuerzo", "Effort", "推理强度"),
+    ("Esfuerzo +", "Effort +", "增加推理强度"),
+    ("Esfuerzo -", "Effort -", "降低推理强度"),
     ("Estado", "Status", "状态"),
     ("Etiqueta", "Label", "标签"),
     ("Etiquetas", "Labels", "标签"),
@@ -194,8 +227,10 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Guardar/Compilar", "Save/Build", "保存/编译"),
     ("Hilos", "Threads", "消息串"),
     ("Historial", "History", "历史记录"),
+    ("Agentes", "Agents", "代理"),
     ("Hoy", "Today", "今天"),
     ("Importar", "Import", "导入"),
+    ("Izquierda", "Left", "左"),
     ("Imprimir", "Print", "打印"),
     ("Incógnito", "Incognito", "无痕窗口"),
     ("Ir a", "Go to", "转到"),
@@ -210,6 +245,8 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Línea", "Line", "直线"),
     ("Mano", "Hand", "抓手"),
     ("Marcador", "Marker", "标记"),
+    ("MCP", "MCP", "MCP"),
+    ("Memoria", "Memory", "记忆"),
     ("Marcar", "Pick", "留用"),
     ("Marcar leído", "Mark read", "标为已读"),
     ("Marco", "Frame", "框架"),
@@ -241,13 +278,16 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Panel sgte", "Next pane", "下个面板"),
     ("Pant. completa", "Full screen", "全屏"),
     ("Pantalla completa", "Full screen", "全屏"),
+    ("Panel inferior", "Bottom panel", "底部面板"),
     ("Participantes", "Participants", "参会者"),
     ("Pegar", "Paste", "粘贴"),
+    ("Permisos", "Permissions", "权限"),
     ("Pincel", "Brush", "画笔"),
     ("Planificar respuesta", "Plan response", "规划回复"),
     ("Play/Pausa", "Play/Pause", "播放/暂停"),
     ("Pluma", "Pen", "钢笔"),
     ("Presentar", "Present", "放映"),
+    ("Preguntar", "Ask", "提问"),
     ("Prioridad", "Priority", "优先级"),
     ("Propiedades", "Properties", "属性"),
     ("Reabrir pestaña", "Reopen tab", "恢复标签页"),
@@ -270,6 +310,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Resp. todos", "Reply all", "回复全部"),
     ("Responder", "Reply", "回复"),
     ("Revelar", "Develop", "修改照片"),
+    ("Revisar", "Review", "审查"),
     ("Rotar", "Rotate", "旋转"),
     ("Salida", "Out", "出点"),
     ("Salir", "Exit", "退出"),
@@ -297,6 +338,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Vencimiento", "Due date", "截止日期"),
     // Deck keys, translatable only since decks started going through `tr` (F4).
     ("Ventanas", "Windows", "窗口"),
+    ("Velocidad", "Speed", "速度"),
     ("Vista previa", "Preview", "预览"),
     ("Vídeo", "Video", "视频"),
     ("Zoom", "Zoom", "缩放"),
@@ -324,9 +366,13 @@ mod tests {
         let missing: Vec<String> = crate::config::default_profiles()
             .iter()
             .flat_map(|p| p.buttons.iter().map(|b| b.label.clone()))
+            .filter(|label| !label.is_empty())
             .filter(|l| !TABLE.iter().any(|e| e.0 == l))
             .collect();
-        assert!(missing.is_empty(), "labels with no translation: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "labels with no translation: {missing:?}"
+        );
     }
 
     #[test]
@@ -335,12 +381,19 @@ mod tests {
         assert_eq!(tr(Lang::En, "Copiar"), "Copy");
         assert_eq!(tr(Lang::Zh, "Copiar"), "复制");
         assert_eq!(tr(Lang::Es, "Copiar"), "Copiar");
-        assert_eq!(tr(Lang::En, "etiqueta custom del usuario"), "etiqueta custom del usuario");
+        assert_eq!(
+            tr(Lang::En, "etiqueta custom del usuario"),
+            "etiqueta custom del usuario"
+        );
 
         // Two sessions, two languages, at the same time — the thing a global could not do.
         let (a, b) = (lang_of("en-GB"), lang_of("es-CL"));
         assert_eq!((tr(a, "Copiar"), tr(b, "Copiar")), ("Copy", "Copiar"));
         assert_eq!(lang_of("zh-Hans"), Lang::Zh);
-        assert_eq!(lang_of("pt-BR"), Lang::Es, "unknown falls back to the source language");
+        assert_eq!(
+            lang_of("pt-BR"),
+            Lang::Es,
+            "unknown falls back to the source language"
+        );
     }
 }

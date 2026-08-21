@@ -293,7 +293,13 @@ fn set_obs_password(password: String) -> serde_json::Value {
 /// to an e-mail. A "save as" dialog is a dependency away if anyone asks.
 #[tauri::command]
 fn export_deck(app: tauri::AppHandle, deck_id: String) -> serde_json::Value {
-    let deck = config().lock().unwrap().decks.iter().find(|d| d.id == deck_id).cloned();
+    let deck = config()
+        .lock()
+        .unwrap()
+        .decks
+        .iter()
+        .find(|d| d.id == deck_id)
+        .cloned();
     let Some(deck) = deck else {
         return json!({ "ok": false, "error": "no_such_deck" });
     };
@@ -317,15 +323,28 @@ fn export_deck(app: tauri::AppHandle, deck_id: String) -> serde_json::Value {
 fn safe_file_name(id: &str) -> String {
     let name: String = id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
-    if name.trim_matches('-').is_empty() { "deck".into() } else { name }
+    if name.trim_matches('-').is_empty() {
+        "deck".into()
+    } else {
+        name
+    }
 }
 
 /// QR of a profile to share it: another KiBoard scans it from the phone and imports it.
 #[tauri::command]
 fn profile_qr(profile: Profile) -> String {
-    let payload = format!("kbprofile:{}", serde_json::to_string(&profile).unwrap_or_default());
+    let payload = format!(
+        "kbprofile:{}",
+        serde_json::to_string(&profile).unwrap_or_default()
+    );
     net::pairing::qr_svg(&payload)
 }
 
@@ -338,11 +357,18 @@ fn profile_qr(profile: Profile) -> String {
 /// "«device» wants to connect: 418203".
 #[tauri::command]
 fn pairing_status() -> serde_json::Value {
-    let cfg = config().lock().unwrap();
+    // Do not hold the config lock while asking the pairing and network subsystems for their
+    // state. `pairing::confirm` takes those locks in the opposite order, and keeping the guard
+    // here would make the status poll capable of deadlocking a phone that confirms at the same
+    // time.
+    let (host_id, pairing_open) = {
+        let cfg = config().lock().unwrap();
+        (cfg.host_id.clone(), cfg.pairing_open)
+    };
     let pending = net::pairing::pending_status();
     json!({
-        "hostId": cfg.host_id,
-        "pairingOpen": cfg.pairing_open,
+        "hostId": host_id,
+        "pairingOpen": pairing_open,
         // R1: the phone can always be pointed at an address by hand, for the networks that never
         // pass mDNS on. That only helps if the PC says what to type, so it is shown next to the
         // code rather than left for the user to go and find in Windows' settings.
@@ -377,9 +403,14 @@ fn revoke_device(device_id: String) -> serde_json::Value {
 /// devices keep working either way.
 #[tauri::command]
 fn set_pairing_open(open: bool) {
-    let mut cfg = config().lock().unwrap();
-    cfg.pairing_open = open;
-    cfg.save();
+    // `advertise` reads the config to rebuild the mDNS TXT record. Release this guard first:
+    // `std::sync::Mutex` is not re-entrant, so calling it while the guard is alive blocks this
+    // Tauri command forever and leaves the checkbox awaiting a response.
+    {
+        let mut cfg = config().lock().unwrap();
+        cfg.pairing_open = open;
+        cfg.save();
+    }
     net::discovery::advertise("auto");
 }
 
@@ -470,9 +501,27 @@ pub fn run() {
                 }
             });
 
-            let pair = MenuItem::with_id(app, "pair", crate::i18n::ui("tray.open"), true, None::<&str>)?;
-            let unpair = MenuItem::with_id(app, "unpair", crate::i18n::ui("tray.unpair"), true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", crate::i18n::ui("tray.quit"), true, None::<&str>)?;
+            let pair = MenuItem::with_id(
+                app,
+                "pair",
+                crate::i18n::ui("tray.open"),
+                true,
+                None::<&str>,
+            )?;
+            let unpair = MenuItem::with_id(
+                app,
+                "unpair",
+                crate::i18n::ui("tray.unpair"),
+                true,
+                None::<&str>,
+            )?;
+            let quit = MenuItem::with_id(
+                app,
+                "quit",
+                crate::i18n::ui("tray.quit"),
+                true,
+                None::<&str>,
+            )?;
             let menu = Menu::with_items(app, &[&pair, &unpair, &quit])?;
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())

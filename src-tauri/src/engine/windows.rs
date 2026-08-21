@@ -148,7 +148,12 @@ mod tests {
     use super::*;
 
     fn w(id: isize) -> Win {
-        Win { id, title: format!("t{id}"), exe: format!("C:\\a{id}.exe"), minimized: false }
+        Win {
+            id,
+            title: format!("t{id}"),
+            exe: format!("C:\\a{id}.exe"),
+            minimized: false,
+        }
     }
     fn ids(v: &[Win]) -> Vec<isize> {
         v.iter().map(|x| x.id).collect()

@@ -1,5 +1,6 @@
 <script>
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
+  import { isDirectionalIcon } from "./icons.js";
 
   let {
     keyData,
@@ -40,11 +41,11 @@
 >
   {#if keyData.kind !== "empty"}
     {#if keyData.state?.on}<span class="state-dot"></span>{/if}
-    <span class="glyph">
+    <span class="glyph" class:directional={isDirectionalIcon(keyData.icon)}>
       {#if keyData.image}
         <img src={keyData.image} alt="" draggable="false" />
       {:else}
-        {iconGlyph(keyData.icon)}
+        <IconGlyph name={keyData.icon} color={keyData.iconColor} />
       {/if}
     </span>
     <span class="label">{keyData.label}</span>
@@ -62,7 +63,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     cursor: grab;
     user-select: none;
     overflow: hidden;
@@ -106,23 +107,29 @@
     filter: brightness(calc(1 - var(--deck-press-darken-percent) / 100));
   }
   .glyph {
-    font-size: calc(var(--deck-key-size) * 0.32);
+    font-size: calc(var(--deck-key-size) * 0.46);
     line-height: 1;
   }
+  .glyph.directional {
+    font-size: calc(var(--deck-key-size) * 0.68);
+  }
   .glyph img {
-    width: calc(var(--deck-key-size) * 0.42);
-    height: calc(var(--deck-key-size) * 0.42);
+    width: calc(var(--deck-key-size) * 0.5);
+    height: calc(var(--deck-key-size) * 0.5);
     object-fit: contain;
     image-rendering: pixelated;
   }
   .label {
-    font-size: 10px;
+    font-size: clamp(13px, calc(var(--deck-key-size) * 0.15), 18px);
+    font-weight: 400;
+    line-height: 1.05;
     color: var(--deck-color-text-primary);
     text-align: center;
-    max-width: 92%;
+    max-width: 96%;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
   .state-dot {
     position: absolute;

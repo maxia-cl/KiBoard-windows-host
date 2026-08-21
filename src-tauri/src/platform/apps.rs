@@ -69,7 +69,11 @@ fn package_family(win_exe: &str) -> Option<String> {
 
 /// Lowercased file name without extension: `C:\W\System32\cleanmgr.exe` -> `cleanmgr`.
 fn stem(path: &str) -> String {
-    let name = path.rsplit(['\\', '/']).next().unwrap_or(path).to_ascii_lowercase();
+    let name = path
+        .rsplit(['\\', '/'])
+        .next()
+        .unwrap_or(path)
+        .to_ascii_lowercase();
     name.strip_suffix(".exe").unwrap_or(&name).to_string()
 }
 
@@ -80,8 +84,11 @@ fn windows_of(id: &str) -> Vec<isize> {
     crate::platform::list_windows()
         .into_iter()
         .filter(|w| {
-            let aumid =
-                if by_aumid { crate::platform::window_aumid(w.id) } else { String::new() };
+            let aumid = if by_aumid {
+                crate::platform::window_aumid(w.id)
+            } else {
+                String::new()
+            };
             matches(id, &w.exe, &aumid)
         })
         .map(|w| w.id)
@@ -126,8 +133,11 @@ pub fn running(ids: &[String]) -> Vec<bool> {
     let wins: Vec<(String, String)> = crate::platform::list_windows()
         .into_iter()
         .map(|w| {
-            let aumid =
-                if need_aumid { crate::platform::window_aumid(w.id) } else { String::new() };
+            let aumid = if need_aumid {
+                crate::platform::window_aumid(w.id)
+            } else {
+                String::new()
+            };
             (w.exe, aumid)
         })
         .collect();
@@ -208,7 +218,9 @@ mod imp {
                 let id = v["AppID"].as_str()?.to_string();
                 let name = v["Name"].as_str()?.trim().to_string();
                 // .msc / .chm / uninstallers are Start-menu entries too; a key pad wants apps.
-                if name.is_empty() || (!id.contains('!') && !id.to_ascii_lowercase().ends_with(".exe")) {
+                if name.is_empty()
+                    || (!id.contains('!') && !id.to_ascii_lowercase().ends_with(".exe"))
+                {
                     return None;
                 }
                 let exe = resolve_exe(&id);
@@ -228,9 +240,15 @@ mod imp {
         if std::path::Path::new(id).is_absolute() {
             return id.to_string();
         }
-        let Some(rest) = id.strip_prefix('{') else { return String::new() };
-        let Some((guid, rel)) = rest.split_once("}\\") else { return String::new() };
-        let Ok(guid) = windows::core::GUID::try_from(guid) else { return String::new() };
+        let Some(rest) = id.strip_prefix('{') else {
+            return String::new();
+        };
+        let Some((guid, rel)) = rest.split_once("}\\") else {
+            return String::new();
+        };
+        let Ok(guid) = windows::core::GUID::try_from(guid) else {
+            return String::new();
+        };
         unsafe {
             let Ok(p) = SHGetKnownFolderPath(&guid, KNOWN_FOLDER_FLAG(0), None) else {
                 return String::new();
@@ -273,8 +291,13 @@ mod imp {
                 };
             // ICONONLY, never a document thumbnail: a launcher key must show what the app IS, not
             // a preview of whatever it last opened.
-            let Ok(hbmp) = factory.GetImage(SIZE { cx: TILE_PX, cy: TILE_PX }, SIIGBF_ICONONLY)
-            else {
+            let Ok(hbmp) = factory.GetImage(
+                SIZE {
+                    cx: TILE_PX,
+                    cy: TILE_PX,
+                },
+                SIIGBF_ICONONLY,
+            ) else {
                 return String::new();
             };
             let out = bitmap_to_png_b64(hbmp);
@@ -288,8 +311,8 @@ mod imp {
     unsafe fn bitmap_to_png_b64(hbmp: windows::Win32::Graphics::Gdi::HBITMAP) -> String {
         use base64::Engine;
         use windows::Win32::Graphics::Gdi::{
-            GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
-            BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+            GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+            DIB_RGB_COLORS, HGDIOBJ,
         };
         let mut bm = BITMAP::default();
         let n = unsafe {
@@ -346,7 +369,13 @@ mod imp {
                 continue;
             }
             // Undo the premultiplication, or every semi-transparent edge renders too dark.
-            let un = |c: u8| if a == 0 { 0 } else { ((c as u32 * 255) / a as u32).min(255) as u8 };
+            let un = |c: u8| {
+                if a == 0 {
+                    0
+                } else {
+                    ((c as u32 * 255) / a as u32).min(255) as u8
+                }
+            };
             px[0] = un(r);
             px[1] = un(g);
             px[2] = un(b);
@@ -386,7 +415,6 @@ mod imp {
             .map(|_| ())
             .map_err(|_| "internal")
     }
-
 }
 
 #[cfg(not(windows))]
@@ -417,7 +445,6 @@ mod tests {
         assert!(!matches(id, "", ""));
     }
 
-
     /// Real strings, read off this machine with Notepad, WhatsApp and Calculator open. Modern
     /// packaged apps publish no AUMID on their window at all, which is why `state.running` said
     /// false with the window right there.
@@ -425,22 +452,37 @@ mod tests {
     fn packaged_app_matches_by_package_family_when_the_window_has_no_aumid() {
         let notepad = "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App";
         let win = r"C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2605.34.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe";
-        assert!(matches(notepad, win, ""), "same package, no AUMID on the window");
+        assert!(
+            matches(notepad, win, ""),
+            "same package, no AUMID on the window"
+        );
 
         // The old shape still wins when it is there: Calculator's window belongs to
         // ApplicationFrameHost and carries the AUMID.
         let calc = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
-        assert!(matches(calc, r"C:\Windows\System32\ApplicationFrameHost.exe", calc));
+        assert!(matches(
+            calc,
+            r"C:\Windows\System32\ApplicationFrameHost.exe",
+            calc
+        ));
 
         // A different package of the same publisher must NOT match, and neither must a desktop app
         // that merely happens to be called Notepad.
-        assert!(!matches(notepad, r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.0_x64__8wekyb3d8bbwe\Calc.exe", ""));
+        assert!(!matches(
+            notepad,
+            r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.0_x64__8wekyb3d8bbwe\Calc.exe",
+            ""
+        ));
         assert!(!matches(notepad, r"C:\Windows\System32\notepad.exe", ""));
 
         // Double underscore before the publisher id, and a publisher that is not the last thing
         // before it — the two shapes the folder name actually comes in.
         let whats = "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App";
-        assert!(matches(whats, r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2629.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe", ""));
+        assert!(matches(
+            whats,
+            r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2629.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe",
+            ""
+        ));
     }
 
     #[test]
@@ -456,10 +498,22 @@ mod tests {
     fn packaged_app_matches_by_aumid_only() {
         let id = "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
         let host = r"C:\WINDOWS\system32\ApplicationFrameHost.exe";
-        assert!(matches(id, host, "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"));
-        assert!(matches(id, host, "microsoft.windowscalculator_8wekyb3d8bbwe!app"));
+        assert!(matches(
+            id,
+            host,
+            "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"
+        ));
+        assert!(matches(
+            id,
+            host,
+            "microsoft.windowscalculator_8wekyb3d8bbwe!app"
+        ));
         // Another packaged app behind the same host must not be mistaken for it.
-        assert!(!matches(id, host, "Microsoft.WindowsCamera_8wekyb3d8bbwe!App"));
+        assert!(!matches(
+            id,
+            host,
+            "Microsoft.WindowsCamera_8wekyb3d8bbwe!App"
+        ));
         assert!(!matches(id, host, ""));
     }
 
@@ -493,5 +547,3 @@ mod tests {
         println!("kill   -> {:?}", super::close(&id));
     }
 }
-
-

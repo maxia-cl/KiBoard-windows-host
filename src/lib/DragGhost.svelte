@@ -1,6 +1,6 @@
 <script>
   import { getDrag } from "./dnd.svelte.js";
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
 
   let drag = $derived(getDrag());
   let face = $derived(drag ? (drag.kind === "key" ? drag.key : drag.item) : null);
@@ -11,7 +11,7 @@
     {#if face.image}
       <img src={face.image} alt="" />
     {:else}
-      <span class="glyph">{iconGlyph(face.icon)}</span>
+      <span class="glyph"><IconGlyph name={face.icon} color={face.iconColor} /></span>
     {/if}
   </div>
 {/if}

@@ -65,7 +65,9 @@ pub(crate) fn start(device_name: &str, platform: &str) -> Result<(String, u64), 
 pub(crate) fn confirm(code: &str) -> Result<Device, &'static str> {
     let now = crate::now_ts();
     let mut slot = pending().lock().unwrap();
-    let Some(p) = slot.as_mut() else { return Err("bad_code") };
+    let Some(p) = slot.as_mut() else {
+        return Err("bad_code");
+    };
     if let Some(until) = p.locked_until {
         if now < until {
             return Err("rate_limited");
@@ -91,7 +93,8 @@ pub(crate) fn confirm(code: &str) -> Result<Device, &'static str> {
     };
     *slot = None;
     let mut cfg = config().lock().unwrap();
-    cfg.devices.retain(|d| d.name != device.name || d.platform != device.platform);
+    cfg.devices
+        .retain(|d| d.name != device.name || d.platform != device.platform);
     cfg.devices.push(device.clone());
     cfg.save();
     Ok(device)
@@ -103,7 +106,9 @@ pub(crate) fn pending_status() -> Option<(String, String, u64)> {
     let now = crate::now_ts();
     let mut slot = pending().lock().unwrap();
     match slot.as_ref() {
-        Some(p) if now <= p.expires_at => Some((p.device_name.clone(), p.code.clone(), p.expires_at - now)),
+        Some(p) if now <= p.expires_at => {
+            Some((p.device_name.clone(), p.code.clone(), p.expires_at - now))
+        }
         _ => {
             *slot = None;
             None
@@ -163,7 +168,9 @@ pub(crate) fn best_lan_ip() -> String {
             3
         }
     });
-    v4s.first().map(|v| v.to_string()).unwrap_or_else(|| "127.0.0.1".into())
+    v4s.first()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "127.0.0.1".into())
 }
 
 pub(crate) fn qr_svg(data: &str) -> String {
@@ -188,7 +195,10 @@ mod tests {
         for _ in 0..50 {
             let c = new_code();
             assert_eq!(c.len(), 6, "code {c:?} isn't 6 chars");
-            assert!(c.chars().all(|ch| ch.is_ascii_digit()), "code {c:?} has a non-digit");
+            assert!(
+                c.chars().all(|ch| ch.is_ascii_digit()),
+                "code {c:?} has a non-digit"
+            );
         }
     }
 }

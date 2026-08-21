@@ -1,5 +1,5 @@
 <script>
-  import { iconGlyph } from "./icons.js";
+  import IconGlyph from "./IconGlyph.svelte";
   import { t } from "./i18n.js";
 
   let { current = null, onpick, onclose } = $props();
@@ -19,7 +19,7 @@
     <div class="grid">
       {#each ICONS as icon (icon)}
         <button class:selected={icon === current} onclick={() => onpick(icon)}>
-          {iconGlyph(icon)}
+          <IconGlyph name={icon} />
         </button>
       {/each}
     </div>

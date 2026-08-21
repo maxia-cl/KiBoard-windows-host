@@ -74,5 +74,10 @@ fn build() -> Result<TlsAcceptor, String> {
 pub(crate) fn fingerprint() -> Option<String> {
     use sha2::{Digest, Sha256};
     let cert = std::fs::read(paths().0).ok()?;
-    Some(Sha256::digest(&cert).iter().map(|b| format!("{b:02x}")).collect())
+    Some(
+        Sha256::digest(&cert)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
 }
