@@ -2088,24 +2088,22 @@ fn backfill_launcher(decks: &mut Vec<Deck>, launcher: Deck) {
     decks.push(launcher);
 }
 
-/// Cap on the generated Launcher deck. High on purpose: an alphabetical cut at two pages silently
-/// hid the browser and the editor, which is exactly what a launcher is for. Paging is cheap, a
-/// missing app is not.
+/// Safety cap on the generated Launcher deck. The rolling-month filter normally keeps this much
+/// lower; the cap only protects a machine that genuinely used hundreds of GUI apps in one month.
 const LAUNCHER_APPS: usize = 60;
 
 /// A "Launcher" deck built from the machine's own app catalogue, so manual mode has something real
 /// to do on first run. Icons and running state are attached per-send by `engine::deck`, not stored.
 ///
-/// ponytail: alphabetical, minus what lives in the Windows folders — that drops `charmap`,
-/// `msconfig` and the rest of the Start menu's system tools without a curated block list. The plan
-/// says "most-used", but the only source for that is the ROT13'd UserAssist registry, whose counts
-/// are famously unreliable; ordering by real usage belongs with the editor in F5.
+/// Only apps used in the rolling 30-day window, newest first. Windows UserAssist bootstraps the
+/// first run; KiBoard then persists every foreground app itself, so ordering remains dependable
+/// even for launch paths Windows does not record.
 fn launcher_deck() -> Option<Deck> {
     let windir = std::env::var("SystemRoot")
         .unwrap_or_else(|_| r"C:\Windows".into())
         .to_lowercase();
-    let apps: Vec<&crate::platform::apps::App> = crate::platform::apps::catalogue()
-        .iter()
+    let apps: Vec<&crate::platform::apps::App> = crate::platform::apps::recent_catalogue()
+        .into_iter()
         .filter(|a| !a.exe.to_lowercase().starts_with(&windir))
         .take(LAUNCHER_APPS)
         .collect();
@@ -2149,6 +2147,61 @@ fn launcher_deck() -> Option<Deck> {
     })
 }
 
+/// Whether a Launcher is still the generated surface KiBoard owns. A user-created deck that merely
+/// chose the same id is left alone; generated app keys all have the launch/focus pair.
+fn is_generated_launcher(deck: &Deck) -> bool {
+    deck.id == "launcher"
+        && deck.pages.len() == 1
+        && deck.pages[0]
+            .keys
+            .first()
+            .is_some_and(|key| key.action.as_deref() == Some("mode:auto") && key.icon == "mode")
+        && deck.pages[0].keys.iter().skip(1).all(|key| {
+            key.action
+                .as_deref()
+                .is_some_and(|a| a.starts_with("launch:"))
+                && key.hold.as_deref().is_some_and(|a| a.starts_with("focus:"))
+        })
+}
+
+/// Replaces only KiBoard's generated Launcher. Returns whether persisted decks changed.
+fn replace_generated_launcher(decks: &mut Vec<Deck>, next: Option<Deck>) -> bool {
+    let Some(index) = decks.iter().position(is_generated_launcher) else {
+        return false;
+    };
+    match next {
+        Some(next) => {
+            let before = serde_json::to_string(&decks[index]).unwrap_or_default();
+            let after = serde_json::to_string(&next).unwrap_or_default();
+            if before == after {
+                return false;
+            }
+            decks[index] = next;
+        }
+        None => {
+            decks.remove(index);
+        }
+    }
+    true
+}
+
+/// Reorders the live generated Launcher after the foreground app changes. The editor and connected
+/// phones receive the same persisted deck; a custom or deleted Launcher is never recreated.
+pub(crate) fn refresh_launcher() {
+    let next = launcher_deck();
+    let changed = {
+        let mut cfg = config().lock().unwrap();
+        let changed = replace_generated_launcher(&mut cfg.decks, next);
+        if changed {
+            cfg.save();
+        }
+        changed
+    };
+    if changed {
+        crate::net::ws::push_manual_layouts();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Persistent configuration
 // ---------------------------------------------------------------------------
@@ -2161,12 +2214,12 @@ const PROFILES_VERSION: u32 = 48;
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
 const CONFIG_VERSION: u32 = 2;
 
-/// How far the seeded decks have been brought forward. 1 = the Launcher exists.
+/// How far the seeded decks have been brought forward. 1 = Launcher exists, 2 = recent-only.
 ///
 /// Separate from `PROFILES_VERSION` because decks are the USER's, not ours: profiles get replaced
 /// wholesale on a bump, decks may only ever be added to. And separate from `CONFIG_VERSION`
 /// because nothing about the file's shape changed.
-const DECKS_VERSION: u32 = 1;
+const DECKS_VERSION: u32 = 2;
 
 /// A phone paired via the v2 six-digit-code flow (protocol/README.md §2). Each device gets its
 /// own token, individually revocable — the pre-F1 model had one shared `token` for everyone.
@@ -2268,14 +2321,22 @@ impl Config {
         }
         if c.decks.is_empty() {
             c.decks = default_decks();
-        } else if c.decks_version < DECKS_VERSION {
+        } else {
             // `default_decks` only ever runs on a config with NO decks, so every installation that
             // predates F4 kept its single starter deck and never saw that phase's headline
             // feature: the Launcher built from the machine's own apps. Only someone installing
             // from scratch got it. Backfill it, so a config that has been carried forward ends up
             // matching a fresh one.
-            if let Some(launcher) = launcher_deck() {
-                backfill_launcher(&mut c.decks, launcher);
+            if c.decks_version < 1 {
+                if let Some(launcher) = launcher_deck() {
+                    backfill_launcher(&mut c.decks, launcher);
+                }
+            }
+            // v1 stored the original alphabetical 60-app snapshot forever. Replace it once with
+            // the rolling-month deck, but only when it still has the generated shape. A custom or
+            // deliberately deleted Launcher remains the user's decision.
+            if c.decks_version < 2 {
+                replace_generated_launcher(&mut c.decks, launcher_deck());
             }
         }
         // Recorded even when nothing was added: a user who deletes the Launcher must not find it
@@ -2320,8 +2381,8 @@ pub(crate) fn new_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        backfill_launcher, default_decks, default_profiles, Button, Deck, Key, KeyKind, Page,
-        Profile, REFERENCE_PAGE,
+        backfill_launcher, default_decks, default_profiles, replace_generated_launcher, Button,
+        Deck, Key, KeyKind, Page, Profile, REFERENCE_PAGE,
     };
 
     fn launcher() -> Deck {
@@ -2351,6 +2412,37 @@ mod tests {
             }],
             ..Default::default()
         }]
+    }
+
+    fn generated_launcher(label: &str, id: &str) -> Deck {
+        Deck {
+            id: "launcher".into(),
+            name: "Launcher".into(),
+            icon: "apps".into(),
+            pages: vec![Page {
+                id: "p0".into(),
+                keys: vec![
+                    Key {
+                        pos: 0,
+                        label: "Auto".into(),
+                        icon: "mode".into(),
+                        action: Some("mode:auto".into()),
+                        kind: KeyKind::Action,
+                        ..Default::default()
+                    },
+                    Key {
+                        pos: 1,
+                        label: label.into(),
+                        icon: "app".into(),
+                        action: Some(format!("launch:{id}")),
+                        hold: Some(format!("focus:{id}")),
+                        kind: KeyKind::Action,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+        }
     }
 
     // Title-only matcher used by catalogue tests. Runtime matching adds terminal process context
@@ -2418,6 +2510,27 @@ mod tests {
         backfill_launcher(&mut decks, launcher());
         assert_eq!(decks.len(), 1);
         assert_eq!(decks[0].name, "Mine");
+    }
+
+    #[test]
+    fn refreshing_the_launcher_replaces_only_the_generated_deck() {
+        let mut decks = vec![generated_launcher("Old", "old")];
+        assert!(replace_generated_launcher(
+            &mut decks,
+            Some(generated_launcher("Recent", "recent"))
+        ));
+        assert_eq!(decks[0].pages[0].keys[1].label, "Recent");
+
+        let mut custom = vec![Deck {
+            id: "launcher".into(),
+            name: "My launcher".into(),
+            ..Default::default()
+        }];
+        assert!(!replace_generated_launcher(
+            &mut custom,
+            Some(generated_launcher("Recent", "recent"))
+        ));
+        assert_eq!(custom[0].name, "My launcher");
     }
 
     /// A profile that names an icon the vocabulary does not have draws a blank square on the phone

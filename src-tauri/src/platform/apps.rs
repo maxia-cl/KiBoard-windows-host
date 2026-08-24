@@ -5,6 +5,9 @@
 //! ponytail: the COM enumeration route (IKnownFolderManager + IEnumShellItems) is ~150 lines of
 //! unsafe for the identical list; upgrade if the one-off ~700 ms boot cost ever matters.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 /// One entry of the catalogue. `id` is what a `launch:` / `focus:` / `kill:` key stores.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct App {
@@ -15,6 +18,113 @@ pub struct App {
     /// Absolute path when it can be resolved. Empty for packaged (UWP) entries, which have no
     /// executable of their own — `icon` gets theirs from the shell instead.
     pub exe: String,
+    /// Windows' best-effort last execution time, used only to bootstrap the local recent list.
+    /// It is deliberately absent from the editor's catalogue JSON.
+    #[serde(skip)]
+    pub(crate) last_opened: u64,
+}
+
+/// Thirty rolling days, not "this calendar month": an app used 29 days ago remains useful today.
+const RECENT_WINDOW_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn recent_path() -> std::path::PathBuf {
+    crate::config::config_dir().join("launcher-recent.json")
+}
+
+fn save_recent(values: &HashMap<String, u64>) {
+    if let Ok(json) = serde_json::to_string_pretty(values) {
+        let _ = std::fs::write(recent_path(), json);
+    }
+}
+
+/// Loads KiBoard's own foreground history, then bootstraps it from Windows UserAssist and apps
+/// that are open right now. UserAssist is useful for the first run; the local file is authoritative
+/// afterwards because Windows does not record every launch path consistently.
+fn load_recent() -> HashMap<String, u64> {
+    let mut values: HashMap<String, u64> = std::fs::read_to_string(recent_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let apps = catalogue();
+    for app in apps {
+        if app.last_opened > values.get(&app.id).copied().unwrap_or(0) {
+            values.insert(app.id.clone(), app.last_opened);
+        }
+    }
+    // First run should not produce an almost-empty launcher while the user already has their daily
+    // tools on screen. Open windows are indisputably recent and can be gathered in one pass.
+    let ids: Vec<String> = apps.iter().map(|a| a.id.clone()).collect();
+    let now = now_millis();
+    for (app, open) in apps.iter().zip(running(&ids)) {
+        if open {
+            values.insert(app.id.clone(), now);
+        }
+    }
+    let cutoff = now.saturating_sub(RECENT_WINDOW_MS);
+    values.retain(|_, used| *used >= cutoff && *used <= now.saturating_add(24 * 60 * 60 * 1000));
+    save_recent(&values);
+    values
+}
+
+fn recent() -> &'static Mutex<HashMap<String, u64>> {
+    static RECENT: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    RECENT.get_or_init(|| Mutex::new(load_recent()))
+}
+
+fn ranked_recent<'a>(apps: &'a [App], values: &HashMap<String, u64>, now: u64) -> Vec<&'a App> {
+    let cutoff = now.saturating_sub(RECENT_WINDOW_MS);
+    let mut rows: Vec<(&App, u64)> = apps
+        .iter()
+        .filter_map(|app| {
+            let used = values.get(&app.id).copied()?;
+            (used >= cutoff && used <= now.saturating_add(24 * 60 * 60 * 1000))
+                .then_some((app, used))
+        })
+        .collect();
+    rows.sort_by(|(a, at), (b, bt)| {
+        bt.cmp(at)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    rows.into_iter().map(|(app, _)| app).collect()
+}
+
+/// Catalogue entries used during the rolling month, newest first.
+pub fn recent_catalogue() -> Vec<&'static App> {
+    let apps = catalogue();
+    ranked_recent(apps, &recent().lock().unwrap(), now_millis())
+}
+
+fn touch_recent_id(id: &str) -> bool {
+    if !catalogue().iter().any(|app| app.id == id) {
+        return false;
+    }
+    let mut values = recent().lock().unwrap();
+    let now = now_millis();
+    values.insert(id.to_string(), now);
+    let cutoff = now.saturating_sub(RECENT_WINDOW_MS);
+    values.retain(|_, used| *used >= cutoff);
+    save_recent(&values);
+    true
+}
+
+/// Records the app owning a foreground window. Returns true only when it resolved to a catalogue
+/// entry, so callers know whether the generated Launcher may need to be reordered.
+pub fn touch_recent_window(exe: &str, aumid: &str) -> bool {
+    let Some(id) = catalogue()
+        .iter()
+        .find(|app| matches(&app.id, exe, aumid))
+        .map(|app| app.id.clone())
+    else {
+        return false;
+    };
+    touch_recent_id(&id)
 }
 
 /// Does a window belong to app `id`, given the executable behind it and the AUMID it advertises?
@@ -149,13 +259,19 @@ pub fn running(ids: &[String]) -> Vec<bool> {
 /// `launch:<id>` — focuses a running instance instead of duplicating it (protocol §3, table of
 /// actions), otherwise activates the catalogue entry.
 pub fn launch(id: &str) -> Result<(), &'static str> {
-    match windows_of(id).first() {
+    let result = match windows_of(id).first() {
         Some(hwnd) => {
             crate::platform::focus_window(*hwnd);
             Ok(())
         }
         None => activate(id),
+    };
+    // A Launcher press has an exact identity, so it can update the order immediately instead of
+    // waiting for the foreground poll. The poll remains necessary for apps opened elsewhere.
+    if result.is_ok() && touch_recent_id(id) {
+        crate::config::refresh_launcher();
     }
+    result
 }
 
 /// `focus:<id>` — never launches.
@@ -187,6 +303,39 @@ mod imp {
     /// Hides the console window PowerShell would otherwise flash (CREATE_NO_WINDOW).
     const NO_WINDOW: u32 = 0x0800_0000;
 
+    /// `Get-StartApps` supplies the launchable catalogue but no usage date. UserAssist is Windows'
+    /// per-user GUI execution history; its value names are ROT13 and its FILETIME starts at byte
+    /// 60 on current Windows. Failure to read it simply leaves `LastOpened` at zero — KiBoard's own
+    /// foreground history takes over from the first run onward.
+    const CATALOGUE_SCRIPT: &str = r#"
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$usage = @{}
+$root = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist'
+foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
+  $props = Get-ItemProperty -LiteralPath $key.PSPath
+  foreach ($prop in $props.PSObject.Properties) {
+    $bytes = $prop.Value
+    if ($prop.Name -like 'PS*' -or $bytes -isnot [byte[]] -or $bytes.Length -lt 68) { continue }
+    $fileTime = [BitConverter]::ToInt64($bytes, 60)
+    if ($fileTime -le 0) { continue }
+    $decoded = -join ($prop.Name.ToCharArray() | ForEach-Object {
+      $n = [int]$_
+      if (($n -ge 65 -and $n -le 77) -or ($n -ge 97 -and $n -le 109)) { [char]($n + 13) }
+      elseif (($n -ge 78 -and $n -le 90) -or ($n -ge 110 -and $n -le 122)) { [char]($n - 13) }
+      else { $_ }
+    })
+    try { $millis = [DateTimeOffset]::new([DateTime]::FromFileTimeUtc($fileTime)).ToUnixTimeMilliseconds() }
+    catch { continue }
+    if (-not $usage.ContainsKey($decoded) -or $millis -gt $usage[$decoded]) { $usage[$decoded] = $millis }
+  }
+}
+@(Get-StartApps | ForEach-Object {
+  $last = 0
+  if ($usage.ContainsKey($_.AppID)) { $last = $usage[$_.AppID] }
+  [pscustomobject]@{ Name = $_.Name; AppID = $_.AppID; LastOpened = $last }
+}) | ConvertTo-Json -Compress
+"#;
+
     /// Every Start-menu entry, resolved and filtered, computed once per run.
     /// ponytail: no invalidation — installing an app mid-session needs a host restart to show up.
     pub fn catalogue() -> &'static [App] {
@@ -204,8 +353,7 @@ mod imp {
                 // Without the encoding line PowerShell writes the console's OEM codepage and every
                 // accented app name ("Administración de equipos") arrives as invalid UTF-8, which
                 // takes the WHOLE catalogue down with it.
-                "[Console]::OutputEncoding=[Text.Encoding]::UTF8; \
-                 Get-StartApps | ConvertTo-Json -Compress",
+                CATALOGUE_SCRIPT,
             ])
             .creation_flags(NO_WINDOW)
             .output();
@@ -217,14 +365,21 @@ mod imp {
             .filter_map(|v| {
                 let id = v["AppID"].as_str()?.to_string();
                 let name = v["Name"].as_str()?.trim().to_string();
-                // .msc / .chm / uninstallers are Start-menu entries too; a key pad wants apps.
-                if name.is_empty()
-                    || (!id.contains('!') && !id.to_ascii_lowercase().ends_with(".exe"))
-                {
+                // .msc / .chm / web links are Start-menu entries too; a key pad wants apps. Plain
+                // aliases such as `Chrome` and `MSEdge` are valid AppsFolder ids and must survive.
+                let lower = id.to_ascii_lowercase();
+                let alias = !id.contains(['\\', '/']) && !id.contains(':');
+                if name.is_empty() || !(id.contains('!') || lower.ends_with(".exe") || alias) {
                     return None;
                 }
                 let exe = resolve_exe(&id);
-                Some(App { id, name, exe })
+                let last_opened = v["LastOpened"].as_u64().unwrap_or(0);
+                Some(App {
+                    id,
+                    name,
+                    exe,
+                    last_opened,
+                })
             })
             .collect();
         apps.sort_by_key(|a| a.name.to_lowercase());
@@ -435,7 +590,41 @@ pub use imp::{activate, catalogue};
 
 #[cfg(test)]
 mod tests {
-    use super::matches;
+    use std::collections::HashMap;
+
+    use super::{matches, ranked_recent, App, RECENT_WINDOW_MS};
+
+    fn app(id: &str, name: &str) -> App {
+        App {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn recent_apps_are_filtered_to_thirty_days_and_newest_first() {
+        let now = 10 * RECENT_WINDOW_MS;
+        let apps = vec![
+            app("old", "Old"),
+            app("yesterday", "Yesterday"),
+            app("today-b", "Beta"),
+            app("today-a", "Alpha"),
+            app("never", "Never"),
+        ];
+        let values = HashMap::from([
+            ("old".into(), now - RECENT_WINDOW_MS - 1),
+            ("yesterday".into(), now - 24 * 60 * 60 * 1000),
+            ("today-b".into(), now),
+            ("today-a".into(), now),
+        ]);
+
+        let ids: Vec<&str> = ranked_recent(&apps, &values, now)
+            .into_iter()
+            .map(|app| app.id.as_str())
+            .collect();
+        assert_eq!(ids, ["today-a", "today-b", "yesterday"]);
+    }
 
     #[test]
     fn known_folder_appid_matches_its_exe() {
@@ -490,6 +679,11 @@ mod tests {
         let id = r"C:\Program Files\Foo\Foo.exe";
         assert!(matches(id, r"c:\program files\foo\FOO.EXE", ""));
         assert!(!matches(id, r"C:\Program Files\Bar\Bar.exe", ""));
+        assert!(matches(
+            "Chrome",
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            ""
+        ));
     }
 
     /// Every packaged app runs behind ApplicationFrameHost, so the executable proves nothing —

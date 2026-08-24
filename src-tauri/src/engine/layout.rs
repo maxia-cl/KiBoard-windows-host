@@ -356,13 +356,22 @@ pub async fn watch_active_app() {
             ),
             Err(_) => (String::new(), String::new(), String::new(), 0),
         };
+        let foreground = platform::foreground_window();
         if app != last_app {
             last_app = app.clone();
             icon = platform::extract_icon_b64(&path); // only on app change
+            let aumid = if foreground == 0 {
+                String::new()
+            } else {
+                platform::window_aumid(foreground)
+            };
+            if platform::apps::touch_recent_window(&path, &aumid) {
+                crate::config::refresh_launcher();
+            }
         }
         // Feeds the window switcher's MRU (§4.3) off the poll that is already running: no second
         // timer, and the ordering is right the first time the user opens the switcher.
-        crate::engine::windows::touch(platform::foreground_window());
+        crate::engine::windows::touch(foreground);
         let layout = {
             let (a, t, ic) = (app.clone(), title.clone(), icon.clone());
             // Terminal detection walks the process tree -> onto the blocking thread, like the rest.

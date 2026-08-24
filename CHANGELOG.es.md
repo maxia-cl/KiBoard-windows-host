@@ -38,6 +38,9 @@ instalarlos juntos de todos modos.
   Elgato).
 - El catálogo de apps vía `Get-StartApps`, un deck **Launcher** generado, y `launch:` / `focus:` /
   `kill:`.
+- El Launcher generado ahora conserva solo las apps usadas durante los últimos 30 días móviles y
+  las ordena por uso más reciente. KiBoard guarda localmente la actividad en primer plano para que
+  el orden mejore desde el primer arranque, sin tocar Launchers personalizados o eliminados.
 - El editor sobre datos reales, con vista previa en vivo al teléfono de decks todavía sin guardar.
 
 ### Arreglado

@@ -36,6 +36,9 @@ have to be installed together anyway.
 - Two-state keys, action chains, custom images and share-by-file (Elgato parity).
 - The app catalogue from `Get-StartApps`, a generated **Launcher** deck, and `launch:` / `focus:` /
   `kill:`.
+- The generated Launcher now keeps only apps used in the rolling last 30 days and orders them by
+  most recent use. KiBoard persists foreground activity locally so the order keeps improving after
+  the first run, while custom or deleted Launcher decks remain untouched.
 - The editor on real data, with live preview to the phone of decks that are not saved yet.
 
 ### Fixed
