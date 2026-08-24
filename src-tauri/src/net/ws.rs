@@ -656,7 +656,9 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                             // Codex's session log. Mirror the successful press now; the poll reconciles
                             // it with the next authoritative settings event.
                             if let Some(was_fast) = codex_speed_before {
-                                codex_fast_mode_pressed(was_fast);
+                                if let Err(error) = codex_fast_mode_pressed(was_fast) {
+                                    eprintln!("KiBoard: could not persist Codex Speed: {error}");
+                                }
                             }
                             json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string()
                         }
