@@ -115,10 +115,12 @@ async fn test_action(action: String) -> Result<(), String> {
 /// State for the UI header: connected devices, version, and the analytics toggle.
 #[tauri::command]
 fn host_status() -> serde_json::Value {
+    let cfg = config().lock().unwrap();
     json!({
         "clients": net::ws::CLIENTS.load(std::sync::atomic::Ordering::Relaxed),
         "version": env!("CARGO_PKG_VERSION"),
-        "analytics": config().lock().unwrap().analytics,
+        "analytics": cfg.analytics,
+        "manualEnabled": cfg.manual_enabled,
     })
 }
 
@@ -361,14 +363,15 @@ fn pairing_status() -> serde_json::Value {
     // state. `pairing::confirm` takes those locks in the opposite order, and keeping the guard
     // here would make the status poll capable of deadlocking a phone that confirms at the same
     // time.
-    let (host_id, pairing_open) = {
+    let (host_id, pairing_open, manual_enabled) = {
         let cfg = config().lock().unwrap();
-        (cfg.host_id.clone(), cfg.pairing_open)
+        (cfg.host_id.clone(), cfg.pairing_open, cfg.manual_enabled)
     };
     let pending = net::pairing::pending_status();
     json!({
         "hostId": host_id,
         "pairingOpen": pairing_open,
+        "manualEnabled": manual_enabled,
         // R1: the phone can always be pointed at an address by hand, for the networks that never
         // pass mDNS on. That only helps if the PC says what to type, so it is shown next to the
         // code rather than left for the user to go and find in Windows' settings.
@@ -412,6 +415,12 @@ fn set_pairing_open(open: bool) {
         cfg.save();
     }
     net::discovery::advertise("auto");
+}
+
+#[tauri::command]
+fn set_manual_enabled(enabled: bool) -> serde_json::Value {
+    let show_intro = net::ws::set_manual_enabled(enabled);
+    json!({ "ok": true, "manualEnabled": enabled, "showIntro": show_intro })
 }
 
 // ---------------------------------------------------------------------------
@@ -460,7 +469,8 @@ pub fn run() {
             pairing_status,
             list_devices,
             revoke_device,
-            set_pairing_open
+            set_pairing_open,
+            set_manual_enabled
         ])
         // The X hides the window (the app lives in the tray); without this it gets destroyed and
         // the app quits.

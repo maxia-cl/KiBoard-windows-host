@@ -2255,6 +2255,12 @@ pub(crate) struct Config {
     /// MANUAL mode: decks the user picks. Absent in a v1 file — seeded on migration.
     #[serde(default)]
     pub(crate) decks: Vec<Deck>,
+    /// Manual mode is an advanced, opt-in feature. Decks remain stored while it is hidden.
+    #[serde(default)]
+    pub(crate) manual_enabled: bool,
+    /// The opt-in explanation is shown once, by whichever paired surface enables Manual first.
+    #[serde(default)]
+    pub(crate) manual_intro_seen: bool,
     /// How far `decks` has been brought forward by seeding. 0 = seeded before the Launcher existed.
     #[serde(default)]
     decks_version: u32,
@@ -2382,8 +2388,18 @@ pub(crate) fn new_token() -> String {
 mod tests {
     use super::{
         backfill_launcher, default_decks, default_profiles, replace_generated_launcher, Button,
-        Deck, Key, KeyKind, Page, Profile, REFERENCE_PAGE,
+        Config, Deck, Key, KeyKind, Page, Profile, REFERENCE_PAGE,
     };
+
+    #[test]
+    fn manual_mode_is_opt_in_for_existing_configs() {
+        let mut old = serde_json::to_value(Config::default()).expect("config json");
+        old.as_object_mut().unwrap().remove("manual_enabled");
+        old.as_object_mut().unwrap().remove("manual_intro_seen");
+        let config: Config = serde_json::from_value(old).expect("old config");
+        assert!(!config.manual_enabled);
+        assert!(!config.manual_intro_seen);
+    }
 
     fn launcher() -> Deck {
         Deck {

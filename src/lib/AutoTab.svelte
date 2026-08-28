@@ -53,8 +53,8 @@
     color: var(--deck-color-text-primary);
   }
   .profile-list input {
-    background: #2c2c2e;
-    border: 1px solid #3a3a3c;
+    background: var(--deck-color-surface-raised);
+    border: 1px solid var(--deck-color-surface-border);
     border-radius: 6px;
     padding: 6px 10px;
     color: inherit;
@@ -71,7 +71,7 @@
     font-size: 13px;
   }
   .profile-list button:hover {
-    background: #2c2c2e;
+    background: var(--deck-color-surface-raised);
   }
   .profile-list button.active {
     background: var(--deck-color-accent);

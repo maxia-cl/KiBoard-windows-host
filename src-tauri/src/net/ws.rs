@@ -79,6 +79,38 @@ fn decks_tx() -> &'static broadcast::Sender<()> {
     DECKS_TX.get_or_init(|| broadcast::channel(4).0)
 }
 
+/// Host-owned feature state. Every connected phone learns about changes without reconnecting.
+static MANUAL_FEATURE_TX: OnceLock<broadcast::Sender<bool>> = OnceLock::new();
+fn manual_feature_tx() -> &'static broadcast::Sender<bool> {
+    MANUAL_FEATURE_TX.get_or_init(|| broadcast::channel(8).0)
+}
+
+pub fn manual_enabled() -> bool {
+    config().lock().unwrap().manual_enabled
+}
+
+/// Persists Manual's visibility and keeps every surface/session in step.
+pub fn set_manual_enabled(enabled: bool) -> bool {
+    let (changed, show_intro) = {
+        let mut cfg = config().lock().unwrap();
+        let changed = cfg.manual_enabled != enabled;
+        let show_intro = enabled && !cfg.manual_intro_seen;
+        cfg.manual_enabled = enabled;
+        if show_intro {
+            cfg.manual_intro_seen = true;
+        }
+        cfg.save();
+        (changed, show_intro)
+    };
+    if !enabled {
+        clear_preview();
+    }
+    if changed {
+        let _ = manual_feature_tx().send(enabled);
+    }
+    show_intro
+}
+
 /// Re-sends its layout to every phone sitting in manual mode. Called after the editor saves, so
 /// the deck on the desk and the deck in the hand cannot disagree about what a key does.
 pub fn push_manual_layouts() {
@@ -92,7 +124,7 @@ pub fn push_manual_layouts() {
 /// client" rather than "any manual client" because sessions are per-connection state, and a
 /// counter for the finer question would have to be right on every disconnect path.
 pub fn manual_app_ids() -> Vec<String> {
-    if CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+    if !manual_enabled() || CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
         return Vec::new();
     }
     with_decks(|decks| {
@@ -160,6 +192,7 @@ where
     let (mut write, mut read) = ws.split();
     let mut rx = tx().subscribe();
     let mut decks_rx = decks_tx().subscribe();
+    let mut manual_feature_rx = manual_feature_tx().subscribe();
     let mut session = Session::default();
     let mut failed_auth = 0u32; // token/code brute-force brake
     let mut keepalive = tokio::time::interval(Duration::from_secs(15));
@@ -232,6 +265,27 @@ where
                         if write.send(Message::text(msg)).await.is_err() { break; }
                         for extra in preloads_for(&session) {
                             if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                        }
+                    }
+                }
+            }
+            changed = manual_feature_rx.recv() => {
+                if let Ok(enabled) = changed {
+                    if !enabled {
+                        session.manual = false;
+                        session.page = 0;
+                        session.page_id.clear();
+                    }
+                    if session.authed {
+                        let feature = json!({"v":2,"type":"manual_feature","enabled":enabled}).to_string();
+                        if write.send(Message::text(feature)).await.is_err() { break; }
+                        if !enabled {
+                            if let Some(cur) = auto_for(&session) {
+                                if write.send(Message::text(cur)).await.is_err() { break; }
+                                for extra in preloads_for(&session) {
+                                    if write.send(Message::text(extra)).await.is_err() { break 'conn; }
+                                }
+                            }
                         }
                     }
                 }
@@ -504,6 +558,9 @@ fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
         return json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string();
     }
     if let Some(deck_id) = action.strip_prefix("deck:") {
+        if !manual_enabled() {
+            return fail("blocked_action");
+        }
         if !config()
             .lock()
             .unwrap()
@@ -520,7 +577,7 @@ fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
         return manual_layout(s).unwrap_or_else(|| fail("no_such_key"));
     }
     if let Some(mode) = action.strip_prefix("mode:") {
-        s.manual = mode == "manual";
+        s.manual = mode == "manual" && manual_enabled();
         s.page = 0;
         return if s.manual {
             manual_layout(s).unwrap_or_else(|| fail("no_such_key"))
@@ -587,15 +644,16 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     // The host's own window does not read this at all: it follows Windows
                     // (`i18n::host_lang`), because that window belongs to the PC.
                     s.lang = crate::i18n::lang_of(val["locale"].as_str().unwrap_or("es"));
-                    let decks: Vec<_> = config()
-                        .lock()
-                        .unwrap()
+                    let cfg = config().lock().unwrap();
+                    let manual_enabled = cfg.manual_enabled;
+                    let decks: Vec<_> = cfg
                         .decks
                         .iter()
                         .map(|d| json!({"id": d.id, "name": d.name, "icon": d.icon}))
                         .collect();
                     json!({"v":2,"type":"hello_ack","ok":true,"name":crate::HOST_NAME,
-                           "mode": if s.manual { "manual" } else { "auto" }, "decks": decks})
+                           "mode": if s.manual { "manual" } else { "auto" },
+                           "manualEnabled": manual_enabled, "decks": decks})
                     .to_string()
                 }
                 Err(e) => json!({"v":2,"type":"hello_ack","ok":false,"error":e}).to_string(),
@@ -718,7 +776,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"})
                     .to_string();
             }
-            s.manual = val["mode"].as_str() == Some("manual");
+            s.manual = val["mode"].as_str() == Some("manual") && manual_enabled();
             s.page = 0;
             if let Some(deck_id) = val["deckId"].as_str() {
                 s.deck_id = deck_id.to_string();
@@ -734,6 +792,22 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 auto_for(s)
                     .unwrap_or_else(|| json!({"v":2,"type":"command_result","ok":true}).to_string())
             }
+        }
+        Some("set_manual_enabled") => {
+            if !s.authed {
+                return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"})
+                    .to_string();
+            }
+            let enabled = val["enabled"].as_bool().unwrap_or(false);
+            let show_intro = set_manual_enabled(enabled);
+            if !enabled {
+                s.manual = false;
+                s.page = 0;
+                s.page_id.clear();
+            }
+            json!({"v":2,"type":"command_result","ok":true,"manualEnabled":enabled,
+                   "showIntro":show_intro})
+            .to_string()
         }
         // §4.4 — the client's grid changes when the phone is rotated, so it cannot be a one-shot
         // declaration in `hello`.

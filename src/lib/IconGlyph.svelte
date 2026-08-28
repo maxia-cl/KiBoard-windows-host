@@ -34,6 +34,6 @@
     font-weight: 800;
   }
   .record {
-    color: #ff5252;
+    color: var(--deck-color-key-danger-background);
   }
 </style>

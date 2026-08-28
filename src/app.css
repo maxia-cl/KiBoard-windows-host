@@ -9,7 +9,8 @@
 body {
   margin: 0;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
-  background: #0f0f10;
+  background: var(--deck-color-app-background, #080a0d);
+  color: var(--deck-color-text-primary, #f7f8fb);
 }
 
 #app {

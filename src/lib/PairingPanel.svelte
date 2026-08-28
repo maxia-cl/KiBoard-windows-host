@@ -1,22 +1,35 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { isTauri, pairingStatus, listDevices, revokeDevice, setPairingOpen } from "./pairing.js";
+  import {
+    isTauri,
+    pairingStatus,
+    listDevices,
+    revokeDevice,
+    setPairingOpen,
+    setManualEnabled,
+  } from "./pairing.js";
   import { t } from "./i18n.js";
 
   // `firstRun` is set when the editor opened this panel by itself because nothing has ever paired
   // (B1). Everything below is the same panel — what changes is that it explains the three steps
   // instead of assuming the reader already knows them.
-  let { onclose, firstRun = false } = $props();
+  let { onclose, onmanualchange = () => {}, firstRun = false } = $props();
 
   let status = $state(null); // { hostId, pairingOpen, pending }
   let devices = $state([]);
   let error = $state(isTauri() ? null : t("pair.nohost"));
+  let showManualIntro = $state(false);
+  let knownManual = null;
   let timer = null;
 
   async function refresh() {
     if (!isTauri()) return;
     try {
       status = await pairingStatus();
+      if (knownManual !== status.manualEnabled) {
+        knownManual = status.manualEnabled;
+        onmanualchange(status.manualEnabled === true, false);
+      }
       devices = await listDevices();
       error = null;
     } catch (e) {
@@ -35,6 +48,22 @@
     await refresh();
   }
 
+  async function toggleManual() {
+    if (!status) return;
+    const enabled = !status.manualEnabled;
+    const result = await setManualEnabled(enabled);
+    status = { ...status, manualEnabled: enabled };
+    knownManual = enabled;
+    onmanualchange(enabled, false);
+    showManualIntro = enabled && result?.showIntro === true;
+  }
+
+  function openManualEditor() {
+    showManualIntro = false;
+    onmanualchange(true, true);
+    onclose();
+  }
+
   onMount(() => {
     refresh();
     // The pending code is short-lived (120s) and set from another connection (the phone) — poll
@@ -51,7 +80,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="panel" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="header">
-      <span>{firstRun ? t("pair.firstrun") : t("pairing.title")}</span>
+      <span>{firstRun ? t("pair.firstrun") : t("settings.title")}</span>
       <button class="close" onclick={onclose}>×</button>
     </div>
 
@@ -71,6 +100,29 @@
     {:else if !status}
       <p class="hint">{t("loading")}</p>
     {:else}
+      <div class="section-title">{t("settings.advanced")}</div>
+      <label class="feature-card">
+        <span>
+          <strong>{t("manual.feature")}</strong>
+          <small>{t("manual.featurehint")}</small>
+        </span>
+        <input type="checkbox" checked={status.manualEnabled} onchange={toggleManual} />
+      </label>
+
+      {#if showManualIntro}
+        <div class="manual-intro">
+          <strong>{t("manual.introtitle")}</strong>
+          <p>{t("manual.introbody")}</p>
+          <ol>
+            <li>{t("manual.intro1")}</li>
+            <li>{t("manual.intro2")}</li>
+            <li>{t("manual.intro3")}</li>
+          </ol>
+          <button class="primary" onclick={openManualEditor}>{t("manual.introcta")}</button>
+        </div>
+      {/if}
+
+      <div class="section-title">{t("pairing.title")}</div>
       <div class="row">
         <span class="label">{t("pair.hostid")}</span>
         <code>{status.hostId}</code>
@@ -143,13 +195,14 @@
     z-index: 1300;
   }
   .panel {
-    background: #1e1e20;
-    border-radius: 10px;
+    background: var(--deck-color-surface);
+    border: 1px solid var(--deck-color-surface-border);
+    border-radius: 14px;
     padding: 16px;
     width: 340px;
     max-height: 76vh;
     overflow-y: auto;
-    color: var(--deck-color-text-primary, #f2f2f2);
+    color: var(--deck-color-text-primary);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -177,10 +230,10 @@
     cursor: pointer;
   }
   .label {
-    color: var(--deck-color-text-secondary, #8a8a8e);
+    color: var(--deck-color-text-secondary);
   }
   .pending {
-    background: #2c2c2e;
+    background: var(--deck-color-surface-raised);
     border-radius: 8px;
     padding: 10px;
     text-align: center;
@@ -194,7 +247,7 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--deck-color-text-secondary, #8a8a8e);
+    color: var(--deck-color-text-secondary);
     margin-bottom: 6px;
   }
   .device {
@@ -202,13 +255,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 6px 0;
-    border-top: 1px solid #2c2c2e;
+    border-top: 1px solid var(--deck-color-surface-border);
   }
   .device-name {
     font-size: 13px;
   }
   .revoke {
-    background: var(--deck-color-accent, #b22420);
+    background: var(--deck-color-key-danger-background);
     color: white;
     border: none;
     border-radius: 6px;
@@ -227,7 +280,7 @@
   }
   .hint {
     font-size: 12px;
-    color: var(--deck-color-text-secondary, #8a8a8e);
+    color: var(--deck-color-text-secondary);
   }
   .fingerprint {
     font-size: 11px;
@@ -235,5 +288,59 @@
   }
   code {
     font-family: ui-monospace, monospace;
+  }
+  .section-title {
+    color: var(--deck-color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding-top: 2px;
+  }
+  .feature-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid var(--deck-color-surface-border);
+    border-radius: 10px;
+    background: var(--deck-color-surface-raised);
+    cursor: pointer;
+  }
+  .feature-card span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .feature-card small,
+  .manual-intro p,
+  .manual-intro ol {
+    color: var(--deck-color-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .manual-intro {
+    border-left: 3px solid var(--deck-color-manual-active);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--deck-color-manual-active) 10%, var(--deck-color-surface-raised));
+    padding: 12px;
+  }
+  .manual-intro p {
+    margin: 6px 0;
+  }
+  .manual-intro ol {
+    margin: 8px 0 12px;
+    padding-left: 18px;
+  }
+  .primary {
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: var(--deck-color-manual-active);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
   }
 </style>

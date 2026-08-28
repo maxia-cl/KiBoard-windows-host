@@ -37,7 +37,7 @@
     z-index: 1200;
   }
   .picker {
-    background: #1e1e20;
+    background: var(--deck-color-surface);
     border-radius: 10px;
     padding: 16px;
     width: 260px;
@@ -56,7 +56,7 @@
     aspect-ratio: 1;
     border-radius: 6px;
     border: none;
-    background: #2c2c2e;
+    background: var(--deck-color-surface-raised);
     font-size: 18px;
     cursor: pointer;
   }

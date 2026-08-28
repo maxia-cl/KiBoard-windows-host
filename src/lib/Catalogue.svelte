@@ -75,8 +75,8 @@
   input {
     width: 100%;
     box-sizing: border-box;
-    background: #2c2c2e;
-    border: 1px solid #3a3a3c;
+    background: var(--deck-color-surface-raised);
+    border: 1px solid var(--deck-color-surface-border);
     border-radius: 6px;
     padding: 6px 10px;
     color: inherit;
@@ -99,7 +99,7 @@
     cursor: grab;
   }
   .item:hover {
-    background: #2c2c2e;
+    background: var(--deck-color-surface-raised);
   }
   .glyph {
     width: 20px;

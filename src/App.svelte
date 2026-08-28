@@ -8,7 +8,7 @@
   import DragGhost from "./lib/DragGhost.svelte";
   import Toast from "./lib/Toast.svelte";
   import PairingPanel from "./lib/PairingPanel.svelte";
-  import { listDevices } from "./lib/pairing.js";
+  import { listDevices, pairingStatus } from "./lib/pairing.js";
   import { invoke } from "./lib/bridge.js";
   import { t } from "./lib/i18n.js";
   import {
@@ -29,13 +29,19 @@
     showToast,
   } from "./lib/store.svelte.js";
 
-  let mode = $state("manual"); // "auto" | "manual" — docs/implementation-plan.md §3.2
+  let mode = $state("auto");
+  let manualEnabled = $state(false);
 
   // Leaving manual mode or closing the window puts every phone back on the SAVED decks. Without
   // this, a phone keeps showing an unsaved preview of a deck that exists nowhere.
   function leaveManual() {
     mode = "auto";
     stopPreview();
+  }
+  function manualChanged(enabled, openEditor = false) {
+    manualEnabled = enabled;
+    if (!enabled) leaveManual();
+    else if (openEditor) mode = "manual";
   }
   let showPairing = $state(false);
   let firstRun = $state(false);
@@ -79,11 +85,16 @@
       .catch(() => {
         /* no backend (vite dev in a browser) — the panel says so itself */
       });
+    pairingStatus()
+      .then((status) => (manualEnabled = status.manualEnabled === true))
+      .catch(() => {});
 
     // The badge is the only honest way to know a save will be felt somewhere.
     const poll = setInterval(async () => {
       try {
-        clients = (await invoke("host_status"))?.clients ?? 0;
+        const status = await invoke("host_status");
+        clients = status?.clients ?? 0;
+        manualChanged(status?.manualEnabled === true, false);
       } catch {
         /* the host UI outliving the backend is not worth a message */
       }
@@ -127,7 +138,9 @@
     <span class="brand"><i class="mark" aria-hidden="true"></i><span class="word">board</span></span>
     <div class="tabs">
       <button class:active={mode === "auto"} onclick={leaveManual}>{t("tab.auto")}</button>
-      <button class:active={mode === "manual"} onclick={() => (mode = "manual")}>{t("tab.manual")}</button>
+      {#if manualEnabled}
+        <button class="manual-tab" class:active={mode === "manual"} onclick={() => (mode = "manual")}>{t("tab.manual")}</button>
+      {/if}
     </div>
     {#if mode === "manual" && ready && deck}
       {#if decks.length > 1}
@@ -166,7 +179,7 @@
       </button>
     {/if}
     <span class="connected">📱 {t("connected", clients)}</span>
-    <button class="settings" onclick={() => (showPairing = true)} aria-label={t("pairing.title")}>⚙</button>
+    <button class="settings" onclick={() => (showPairing = true)} aria-label={t("settings.title")}>⚙</button>
   </header>
 
   {#if mode === "manual"}
@@ -190,7 +203,11 @@
   <DragGhost />
   <Toast />
   {#if showPairing}
-    <PairingPanel {firstRun} onclose={() => ((showPairing = false), (firstRun = false))} />
+    <PairingPanel
+      {firstRun}
+      onmanualchange={manualChanged}
+      onclose={() => ((showPairing = false), (firstRun = false))}
+    />
   {/if}
 </div>
 
@@ -208,8 +225,8 @@
   .deck-name,
   .tool,
   .save {
-    background: #232326;
-    border: 1px solid #34343a;
+    background: var(--deck-color-surface-interactive);
+    border: 1px solid var(--deck-color-surface-border);
     color: var(--deck-color-text-primary);
     border-radius: 6px;
     padding: 4px 10px;
@@ -231,7 +248,7 @@
     cursor: default;
   }
   .save.dirty {
-    background: var(--deck-color-accent, #b22420);
+    background: var(--deck-color-accent);
     border-color: transparent;
     color: #fff;
   }
@@ -245,7 +262,8 @@
     align-items: center;
     gap: 16px;
     padding: 10px 16px;
-    border-bottom: 1px solid #2a2a2c;
+    background: var(--deck-color-surface);
+    border-bottom: 1px solid var(--deck-color-surface-border);
     color: var(--deck-color-text-primary);
   }
   .brand {
@@ -256,7 +274,7 @@
   .mark {
     width: 26px;
     height: 28px;
-    background: var(--deck-color-accent, #b22420);
+    background: var(--deck-color-brand);
     mask: url(/mark.png) center / contain no-repeat;
     -webkit-mask: url(/mark.png) center / contain no-repeat;
   }
@@ -269,7 +287,7 @@
   .tabs {
     display: flex;
     gap: 4px;
-    background: #232326;
+    background: var(--deck-color-surface-interactive);
     border-radius: 8px;
     padding: 2px;
   }
@@ -284,6 +302,10 @@
   }
   .tabs button.active {
     background: var(--deck-color-accent);
+    color: var(--deck-color-app-background);
+  }
+  .tabs .manual-tab.active {
+    background: var(--deck-color-manual-active);
     color: white;
   }
   .connected {

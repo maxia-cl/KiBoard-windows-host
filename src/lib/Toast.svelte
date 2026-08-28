@@ -13,7 +13,8 @@
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
-    background: #1a1a1c;
+    background: var(--deck-color-surface-raised);
+    border: 1px solid var(--deck-color-surface-border);
     color: var(--deck-color-text-primary);
     padding: 8px 16px;
     border-radius: 8px;

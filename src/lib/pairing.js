@@ -19,3 +19,7 @@ export function revokeDevice(deviceId) {
 export function setPairingOpen(open) {
   return invoke("set_pairing_open", { open });
 }
+
+export function setManualEnabled(enabled) {
+  return invoke("set_manual_enabled", { enabled });
+}

@@ -61,7 +61,7 @@
     z-index: 1200;
   }
   .popover {
-    background: #1e1e20;
+    background: var(--deck-color-surface);
     border-radius: 10px;
     padding: 12px;
     width: 320px;
@@ -71,8 +71,8 @@
     gap: 8px;
   }
   input {
-    background: #2c2c2e;
-    border: 1px solid #3a3a3c;
+    background: var(--deck-color-surface-raised);
+    border: 1px solid var(--deck-color-surface-border);
     border-radius: 6px;
     padding: 6px 10px;
     color: var(--deck-color-text-primary);
@@ -101,7 +101,7 @@
     text-align: left;
   }
   .item:hover {
-    background: #2c2c2e;
+    background: var(--deck-color-surface-raised);
   }
   .glyph img {
     width: 18px;

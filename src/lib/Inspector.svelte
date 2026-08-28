@@ -100,7 +100,7 @@
 
     <label>
       {t("insp.colour")}
-      <input type="color" value={key.color ?? "#2C2C2E"} oninput={(e) => set("color", e.currentTarget.value)} />
+      <input type="color" value={key.color ?? "#303743"} oninput={(e) => set("color", e.currentTarget.value)} />
     </label>
 
     {#if key.kind === "action"}
@@ -154,7 +154,7 @@
             </button>
             <input
               type="color"
-              value={key.toggle.color ?? key.color ?? "#2C2C2E"}
+              value={key.toggle.color ?? key.color ?? "#303743"}
               oninput={(e) => setFace("color", e.currentTarget.value)}
             />
           </div>
@@ -232,7 +232,7 @@
     align-items: center;
   }
   fieldset {
-    border: 1px solid #3a3a3c;
+    border: 1px solid var(--deck-color-surface-border);
     border-radius: 6px;
     padding: 8px;
     display: flex;
@@ -261,8 +261,8 @@
   input,
   .icon-btn,
   .add {
-    background: #2c2c2e;
-    border: 1px solid #3a3a3c;
+    background: var(--deck-color-surface-raised);
+    border: 1px solid var(--deck-color-surface-border);
     border-radius: 6px;
     padding: 6px 8px;
     color: var(--deck-color-text-primary);
