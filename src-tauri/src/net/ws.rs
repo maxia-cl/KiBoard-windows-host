@@ -99,8 +99,12 @@ fn deck_allowed(manual_feature_enabled: bool, deck_id: &str) -> bool {
 
 /// A generated Launcher app key is a transient route, not a Manual-mode destination. Fixed decks
 /// may also contain `launch:` keys, so the session identity is part of the check.
+fn is_launcher_session(s: &Session) -> bool {
+    s.manual && s.deck_id == LAUNCHER_DECK_ID
+}
+
 fn launcher_app_target<'a>(s: &Session, action: &'a str) -> Option<&'a str> {
-    if !s.manual || s.deck_id != LAUNCHER_DECK_ID {
+    if !is_launcher_session(s) {
         return None;
     }
     ["launch:", "focus:"]
@@ -114,6 +118,14 @@ fn enter_auto(s: &mut Session) {
     s.manual = false;
     s.page = 0;
     s.page_id.clear();
+}
+
+fn leave_launcher(s: &mut Session) -> bool {
+    if !is_launcher_session(s) {
+        return false;
+    }
+    enter_auto(s);
+    true
 }
 
 /// Persists Manual's visibility and keeps every surface/session in step.
@@ -755,8 +767,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                             }
                             let ok =
                                 || json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string();
-                            if launcher_target.is_some() {
-                                enter_auto(s);
+                            if launcher_target.is_some() && leave_launcher(s) {
                                 // Selecting the app already in front produces no watcher event.
                                 // Its cached automatic layout is authoritative, so return it now.
                                 // For a newly opened or newly focused app, keep the Launcher drawn
@@ -923,8 +934,21 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     .to_string();
             }
             let id = val["id"].as_i64().unwrap_or(0) as isize;
+            // The lower-right open-window picker is another route out of Launcher. Remember
+            // whether this window was already in front: if so the foreground watcher has no
+            // change to publish, and its cached Auto layout must be returned immediately.
+            let target_was_foreground = platform::foreground_window() == id;
             platform::focus_window(id);
-            json!({"v":2,"type":"command_result","ok":true}).to_string()
+            let ok = || json!({"v":2,"type":"command_result","ok":true}).to_string();
+            if leave_launcher(s) {
+                if target_was_foreground {
+                    auto_for(s).unwrap_or_else(ok)
+                } else {
+                    ok()
+                }
+            } else {
+                ok()
+            }
         }
         _ => json!({"v":2,"type":"command_result","ok":false,"error":"unknown_type"}).to_string(),
     }
@@ -942,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn only_launcher_app_keys_return_the_session_to_auto() {
+    fn only_launcher_routes_return_the_session_to_auto() {
         let mut launcher = Session {
             manual: true,
             deck_id: LAUNCHER_DECK_ID.into(),
@@ -960,17 +984,21 @@ mod tests {
         );
         assert_eq!(launcher_app_target(&launcher, "mode:auto"), None);
 
-        let fixed = Session {
+        let mut fixed = Session {
             manual: true,
             deck_id: "work".into(),
             ..Default::default()
         };
         assert_eq!(launcher_app_target(&fixed, "launch:notepad.exe"), None);
+        assert!(is_launcher_session(&launcher));
+        assert!(!is_launcher_session(&fixed));
 
-        enter_auto(&mut launcher);
+        assert!(leave_launcher(&mut launcher));
         assert!(!launcher.manual);
         assert_eq!(launcher.page, 0);
         assert!(launcher.page_id.is_empty());
+        assert!(!leave_launcher(&mut fixed));
+        assert!(fixed.manual);
     }
 
     #[test]
