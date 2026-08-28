@@ -45,6 +45,8 @@ instalarlos juntos de todos modos.
 
 ### Arreglado
 
+- KiBoard ya no reescribe su entrada de inicio de Windows en cada ejecución, y ahora informa los
+  errores de registro en vez de ignorarlos silenciosamente.
 - El deck Launcher nunca llegó a quien ya tenía un config: el sembrado estaba guardado por
   `decks.is_empty()`, que se salta en silencio a todos los usuarios existentes. Ahora se rellena, y
   se registra aunque no añada nada, para que un Launcher borrado siga borrado.

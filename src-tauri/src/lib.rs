@@ -482,11 +482,25 @@ pub fn run() {
             integrations::obs::set_sender(obs_tx);
             tauri::async_runtime::spawn(integrations::obs::obs_client_loop(obs_rx));
 
-            // Launch with Windows (idempotent). Debug builds must NOT register themselves: the exe
-            // under target/debug loads `devUrl`, so at boot it opens a "connection refused" window
-            // because Vite is not running.
+            // Launch with Windows. Avoid rewriting the Run key on every launch: besides being
+            // unnecessary, repeated unsigned registry writes look exactly like a configuration
+            // modifier to endpoint protection. Still repair a missing entry, and surface failures
+            // instead of silently pretending startup was configured.
+            //
+            // Debug builds must NOT register themselves: the exe under target/debug loads
+            // `devUrl`, so at boot it opens a "connection refused" window because Vite is absent.
             if !cfg!(debug_assertions) {
-                let _ = app.autolaunch().enable();
+                match app.autolaunch().is_enabled() {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        if let Err(error) = app.autolaunch().enable() {
+                            eprintln!("KiBoard: failed to enable Windows autostart: {error}");
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("KiBoard: failed to inspect Windows autostart: {error}");
+                    }
+                }
             }
 
             // Checks for updates on GitHub at launch (silent if there's none/the connection fails).

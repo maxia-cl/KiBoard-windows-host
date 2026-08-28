@@ -43,6 +43,8 @@ have to be installed together anyway.
 
 ### Fixed
 
+- KiBoard no longer rewrites its Windows startup registry entry on every launch, and registration
+  errors are now reported instead of silently ignored.
 - The Launcher deck never reached anyone who already had a config: the seeding was guarded by
   `decks.is_empty()`, which silently skips every existing user. Backfilled, and recorded even when
   nothing is added so a deleted Launcher stays deleted.
