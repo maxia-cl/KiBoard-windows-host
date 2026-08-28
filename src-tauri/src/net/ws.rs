@@ -89,6 +89,14 @@ pub fn manual_enabled() -> bool {
     config().lock().unwrap().manual_enabled
 }
 
+const LAUNCHER_DECK_ID: &str = "launcher";
+
+/// Launcher is generated and maintained by the host, so hiding user-configured Manual decks must
+/// never hide it. It still uses deck rendering internally; this is the product boundary.
+fn deck_allowed(manual_feature_enabled: bool, deck_id: &str) -> bool {
+    manual_feature_enabled || deck_id == LAUNCHER_DECK_ID
+}
+
 /// Persists Manual's visibility and keeps every surface/session in step.
 pub fn set_manual_enabled(enabled: bool) -> bool {
     let (changed, show_intro) = {
@@ -124,7 +132,7 @@ pub fn push_manual_layouts() {
 /// client" rather than "any manual client" because sessions are per-connection state, and a
 /// counter for the finer question would have to be right on every disconnect path.
 pub fn manual_app_ids() -> Vec<String> {
-    if !manual_enabled() || CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+    if CLIENTS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
         return Vec::new();
     }
     with_decks(|decks| {
@@ -271,7 +279,10 @@ where
             }
             changed = manual_feature_rx.recv() => {
                 if let Ok(enabled) = changed {
-                    if !enabled {
+                    let forced_auto = !enabled
+                        && session.manual
+                        && session.deck_id != LAUNCHER_DECK_ID;
+                    if forced_auto {
                         session.manual = false;
                         session.page = 0;
                         session.page_id.clear();
@@ -279,7 +290,7 @@ where
                     if session.authed {
                         let feature = json!({"v":2,"type":"manual_feature","enabled":enabled}).to_string();
                         if write.send(Message::text(feature)).await.is_err() { break; }
-                        if !enabled {
+                        if forced_auto {
                             if let Some(cur) = auto_for(&session) {
                                 if write.send(Message::text(cur)).await.is_err() { break; }
                                 for extra in preloads_for(&session) {
@@ -558,7 +569,7 @@ fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
         return json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string();
     }
     if let Some(deck_id) = action.strip_prefix("deck:") {
-        if !manual_enabled() {
+        if !deck_allowed(manual_enabled(), deck_id) {
             return fail("blocked_action");
         }
         if !config()
@@ -577,7 +588,7 @@ fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
         return manual_layout(s).unwrap_or_else(|| fail("no_such_key"));
     }
     if let Some(mode) = action.strip_prefix("mode:") {
-        s.manual = mode == "manual" && manual_enabled();
+        s.manual = mode == "manual" && deck_allowed(manual_enabled(), &s.deck_id);
         s.page = 0;
         return if s.manual {
             manual_layout(s).unwrap_or_else(|| fail("no_such_key"))
@@ -776,12 +787,13 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                 return json!({"v":2,"type":"command_result","ok":false,"error":"not_paired"})
                     .to_string();
             }
-            s.manual = val["mode"].as_str() == Some("manual") && manual_enabled();
-            s.page = 0;
             if let Some(deck_id) = val["deckId"].as_str() {
                 s.deck_id = deck_id.to_string();
                 s.page_id = String::new(); // entry page of the new deck
             }
+            s.manual = val["mode"].as_str() == Some("manual")
+                && deck_allowed(manual_enabled(), &s.deck_id);
+            s.page = 0;
             if s.manual {
                 manual_layout(s).unwrap_or_else(|| {
                     json!({"v":2,"type":"command_result","ok":false,"error":"no_such_key"})
@@ -800,7 +812,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             }
             let enabled = val["enabled"].as_bool().unwrap_or(false);
             let show_intro = set_manual_enabled(enabled);
-            if !enabled {
+            if !enabled && s.manual && s.deck_id != LAUNCHER_DECK_ID {
                 s.manual = false;
                 s.page = 0;
                 s.page_id.clear();
@@ -881,6 +893,13 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_launcher_stays_available_while_manual_is_hidden() {
+        assert!(deck_allowed(false, LAUNCHER_DECK_ID));
+        assert!(!deck_allowed(false, "work"));
+        assert!(deck_allowed(true, "work"));
+    }
 
     #[test]
     fn foreground_panel_exposes_one_fixed_action_not_client_supplied_code() {
