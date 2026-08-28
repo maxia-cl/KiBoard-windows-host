@@ -97,6 +97,25 @@ fn deck_allowed(manual_feature_enabled: bool, deck_id: &str) -> bool {
     manual_feature_enabled || deck_id == LAUNCHER_DECK_ID
 }
 
+/// A generated Launcher app key is a transient route, not a Manual-mode destination. Fixed decks
+/// may also contain `launch:` keys, so the session identity is part of the check.
+fn launcher_app_target<'a>(s: &Session, action: &'a str) -> Option<&'a str> {
+    if !s.manual || s.deck_id != LAUNCHER_DECK_ID {
+        return None;
+    }
+    ["launch:", "focus:"]
+        .iter()
+        .find_map(|prefix| action.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
+fn enter_auto(s: &mut Session) {
+    s.manual = false;
+    s.page = 0;
+    s.page_id.clear();
+}
+
 /// Persists Manual's visibility and keeps every surface/session in step.
 pub fn set_manual_enabled(enabled: bool) -> bool {
     let (changed, show_intro) = {
@@ -713,6 +732,11 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     run_session_action(&action, s, &id)
                 }
                 Ok(Press::Run(action)) => {
+                    let launcher_target = launcher_app_target(s, &action);
+                    // If it is already in front, the watcher has no foreground change to publish;
+                    // remember that before running the action so we can answer with Auto now.
+                    let target_was_foreground =
+                        launcher_target.is_some_and(crate::platform::apps::is_foreground);
                     // Capture Speed before injecting its shortcut. Codex may append the new state
                     // to the session while SendInput is still returning, so reading it afterwards
                     // and toggling again would invert the indicator.
@@ -729,7 +753,23 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                                     eprintln!("KiBoard: could not persist Codex Speed: {error}");
                                 }
                             }
-                            json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string()
+                            let ok =
+                                || json!({"v":2,"type":"key_result","id":id,"ok":true}).to_string();
+                            if launcher_target.is_some() {
+                                enter_auto(s);
+                                // Selecting the app already in front produces no watcher event.
+                                // Its cached automatic layout is authoritative, so return it now.
+                                // For a newly opened or newly focused app, keep the Launcher drawn
+                                // only until the 500 ms watcher publishes that app's real profile;
+                                // sending the previous app here would cause a visible flash.
+                                if target_was_foreground {
+                                    auto_for(s).unwrap_or_else(ok)
+                                } else {
+                                    ok()
+                                }
+                            } else {
+                                ok()
+                            }
                         }
                         Err(e) => json!({"v":2,"type":"key_result","id":id,"ok":false,"error":e})
                             .to_string(),
@@ -899,6 +939,38 @@ mod tests {
         assert!(deck_allowed(false, LAUNCHER_DECK_ID));
         assert!(!deck_allowed(false, "work"));
         assert!(deck_allowed(true, "work"));
+    }
+
+    #[test]
+    fn only_launcher_app_keys_return_the_session_to_auto() {
+        let mut launcher = Session {
+            manual: true,
+            deck_id: LAUNCHER_DECK_ID.into(),
+            page_id: "p0".into(),
+            page: 2,
+            ..Default::default()
+        };
+        assert_eq!(
+            launcher_app_target(&launcher, "launch:notepad.exe"),
+            Some("notepad.exe")
+        );
+        assert_eq!(
+            launcher_app_target(&launcher, "focus:notepad.exe"),
+            Some("notepad.exe")
+        );
+        assert_eq!(launcher_app_target(&launcher, "mode:auto"), None);
+
+        let fixed = Session {
+            manual: true,
+            deck_id: "work".into(),
+            ..Default::default()
+        };
+        assert_eq!(launcher_app_target(&fixed, "launch:notepad.exe"), None);
+
+        enter_auto(&mut launcher);
+        assert!(!launcher.manual);
+        assert_eq!(launcher.page, 0);
+        assert!(launcher.page_id.is_empty());
     }
 
     #[test]

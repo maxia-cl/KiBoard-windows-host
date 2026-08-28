@@ -205,6 +205,14 @@ fn windows_of(id: &str) -> Vec<isize> {
         .collect()
 }
 
+/// Whether `id` already owns the foreground window. Launcher uses this to return an auto layout
+/// immediately when selecting the app that is already in front; in that case the foreground
+/// watcher has no change to publish.
+pub fn is_foreground(id: &str) -> bool {
+    let foreground = crate::platform::foreground_window();
+    foreground != 0 && windows_of(id).contains(&foreground)
+}
+
 /// The executable behind a catalogue id, or "".
 fn exe_of(id: &str) -> &'static str {
     catalogue()
