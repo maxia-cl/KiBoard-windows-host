@@ -152,6 +152,18 @@ fn leave_launcher(s: &mut Session) -> bool {
     true
 }
 
+/// Picking a window is an explicit request to work in that application, so its automatic profile
+/// becomes authoritative even when the picker was opened from a fixed Manual deck. Otherwise the
+/// foreground app changes while the old fixed deck stays visible, which looks like an app-specific
+/// customization that the Windows editor cannot offer.
+fn leave_manual_for_window_selection(s: &mut Session) -> bool {
+    if !s.manual {
+        return false;
+    }
+    enter_auto(s);
+    true
+}
+
 /// Persists Manual's visibility and keeps every surface/session in step.
 pub fn set_manual_enabled(enabled: bool) -> bool {
     let (changed, show_intro) = {
@@ -972,13 +984,14 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                     .to_string();
             }
             let id = val["id"].as_i64().unwrap_or(0) as isize;
-            // The lower-right open-window picker is another route out of Launcher. Remember
-            // whether this window was already in front: if so the foreground watcher has no
-            // change to publish, and its cached Auto layout must be returned immediately.
+            // Choosing a window always belongs to Auto, whether the picker was opened from the
+            // generated Launcher or from a fixed Manual deck. Remember whether this window was
+            // already in front: if so the foreground watcher has no change to publish, and its
+            // cached Auto layout must be returned immediately.
             let target_was_foreground = platform::foreground_window() == id;
             platform::focus_window(id);
             let ok = || json!({"v":2,"type":"command_result","ok":true}).to_string();
-            if leave_launcher(s) {
+            if leave_manual_for_window_selection(s) {
                 if target_was_foreground {
                     auto_for(s).unwrap_or_else(ok)
                 } else {
@@ -1037,6 +1050,24 @@ mod tests {
         assert!(launcher.page_id.is_empty());
         assert!(!leave_launcher(&mut fixed));
         assert!(fixed.manual);
+    }
+
+    #[test]
+    fn choosing_a_window_returns_every_manual_surface_to_auto() {
+        let mut fixed = Session {
+            manual: true,
+            deck_id: "work".into(),
+            page_id: "p2".into(),
+            page: 3,
+            ..Default::default()
+        };
+        assert!(leave_manual_for_window_selection(&mut fixed));
+        assert!(!fixed.manual);
+        assert_eq!(fixed.page, 0);
+        assert!(fixed.page_id.is_empty());
+
+        let mut automatic = Session::default();
+        assert!(!leave_manual_for_window_selection(&mut automatic));
     }
 
     #[test]
