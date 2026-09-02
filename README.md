@@ -25,7 +25,6 @@ apps and actions onto keys.
 |---|---|---|
 | [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Message contract, visual tokens, fixtures, project docs | Public |
 | [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | Mobile app | Public |
-| [`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases) | Installers and update feed | Public |
 
 `KiBoard-protocol` is the **source of truth**. Change it first, then this repo.
 Signed builds and their update feed are published in this repository's Releases section.

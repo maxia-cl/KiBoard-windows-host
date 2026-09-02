@@ -26,7 +26,6 @@ arrastrando apps y acciones sobre las teclas.
 |---|---|---|
 | [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Contrato de mensajes, tokens visuales, fixtures, documentación | Público |
 | [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | App móvil | Público |
-| [`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases) | Instaladores y feed de actualización | Público |
 
 `KiBoard-protocol` es la **fuente de verdad**. Primero se cambia ahí, después aquí.
 Las compilaciones firmadas y su feed de actualización se publican en Releases de este repositorio.
