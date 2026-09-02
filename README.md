@@ -23,13 +23,12 @@ apps and actions onto keys.
 
 | Repository | What it is | Visibility |
 |---|---|---|
-| [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Message contract, visual tokens, fixtures, project docs | Private |
-| [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | Mobile app | Private |
+| [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Message contract, visual tokens, fixtures, project docs | Public |
+| [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | Mobile app | Public |
 | [`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases) | Installers and update feed | Public |
 
 `KiBoard-protocol` is the **source of truth**. Change it first, then this repo.
-Builds are published to `KiBoard-windows-host-releases`, never here — this repo stays private and
-the updater needs a public feed.
+Signed builds and their update feed are published in this repository's Releases section.
 
 ## Status
 
@@ -66,40 +65,18 @@ pairing funnel, and the QR half of the manual-address fallback (the phone has no
 
 ## Releases and updates
 
-Builds are published to
-[`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases), which
-is public because the updater needs a feed it can read without a token. The updater endpoint in
-`src-tauri/tauri.conf.json` points there.
-
-**Two things are still v1's and must be replaced before the first v2 release:**
-
-1. **The signing key.** `plugins.updater.pubkey` is still the key KiBoard v1 signs with. A v2
-   release signed with a v2 key would be rejected by it. Generate one, keep the private half out of
-   this repo, and paste the public half into `tauri.conf.json`:
-
-   ```bash
-   npx tauri signer generate -w kiboard2-updater.key
-   ```
-
-   The private key and its password become the `TAURI_SIGNING_PRIVATE_KEY` and
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets of whatever builds the release. Losing them means
-   no installed host can ever update again — there is no recovery path, only a manual reinstall.
-
-2. **A token for the releases repo.** `.github/workflows/release.yml` publishes into
-   `KiBoard-windows-host-releases`, a different repository, which the default `GITHUB_TOKEN` cannot
-   write to. It needs a `RELEASES_TOKEN` secret with contents write on that repo.
-
-The workflow builds on a `v*` tag, writes `latest.json` — the feed the updater reads — and opens the
-release as a **draft**, so nothing goes public until someone looks at it. It refuses to run at all
-without the signing key, rather than publishing a bundle no installed host would accept.
+Builds are published in this repository's Releases section. The workflow runs on a `v*` tag,
+signs the updater artifacts, writes `latest.json`, and opens the release as a **draft** for review.
+It refuses to publish if `TAURI_SIGNING_PRIVATE_KEY` is missing. Run
+`tool/setup-windows-updater-signing.ps1` only once on the release machine and back up both the key
+and password outside Git.
 
 **The version is `2.0.0`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
 `0.1.29` was where v1's numbering stopped and came across in the subtree port; host and phone share
 a number because `wss://` means they have to be installed together anyway.
 
-Until the key exists the updater simply finds nothing, which is the safe failure. The endpoint used
-to point at v1's feed — that one was **not** safe: the signature matched, so a v2 host could have
-installed v1 over itself.
+The updater public key is committed in `tauri.conf.json`; its private half is stored only as a
+GitHub Actions secret and in the release operator's protected backup.
 
 ## Stack
 
@@ -112,3 +89,7 @@ unpicking it.
 All code is English — identifiers, comments, commits, log output. User-facing strings go through
 `i18n`, never inline. Documents ship in English and Spanish (`NAME.md` / `NAME.es.md`).
 See [`CONTRIBUTING.md`](https://github.com/maxia-cl/KiBoard-protocol/blob/main/CONTRIBUTING.md).
+
+## License
+
+KiBoard is open source under the [MIT License](LICENSE).

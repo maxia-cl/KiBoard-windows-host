@@ -2,8 +2,10 @@
 name = "desktop"
 version = "2.0.0"
 description = "KiBoard Host"
-authors = ["you"]
+authors = ["Maxia"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/maxia-cl/KiBoard-windows-host"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -48,4 +50,3 @@ uiautomation = "0.25.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "native-tls"] }
 rcgen = "0.14.8"
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring", "tls12", "logging"] }
-

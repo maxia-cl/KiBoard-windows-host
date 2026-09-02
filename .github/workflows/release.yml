@@ -7,6 +7,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: windows-latest
@@ -36,14 +39,12 @@ jobs:
 
       - uses: tauri-apps/tauri-action@v0
         env:
-          # Writes the release into the public releases repo, not this private one: the updater has
-          # to read the feed without a token.
-          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           owner: maxia-cl
-          repo: KiBoard-windows-host-releases
+          repo: KiBoard-windows-host
           tagName: ${{ github.ref_name }}
           releaseName: KiBoard ${{ github.ref_name }}
           releaseBody: See CHANGELOG.md in the host repository.

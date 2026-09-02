@@ -24,13 +24,12 @@ arrastrando apps y acciones sobre las teclas.
 
 | Repositorio | Qué es | Visibilidad |
 |---|---|---|
-| [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Contrato de mensajes, tokens visuales, fixtures, documentación | Privado |
-| [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | App móvil | Privado |
+| [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol) | Contrato de mensajes, tokens visuales, fixtures, documentación | Público |
+| [`KiBoard-app`](https://github.com/maxia-cl/KiBoard-app) | App móvil | Público |
 | [`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases) | Instaladores y feed de actualización | Público |
 
 `KiBoard-protocol` es la **fuente de verdad**. Primero se cambia ahí, después aquí.
-Las compilaciones se publican en `KiBoard-windows-host-releases`, nunca aquí: este repo se queda
-privado y el updater necesita un feed público.
+Las compilaciones firmadas y su feed de actualización se publican en Releases de este repositorio.
 
 ## Estado
 
@@ -70,42 +69,18 @@ tiene escáner).
 
 ## Publicación y actualizaciones
 
-Las compilaciones se publican en
-[`KiBoard-windows-host-releases`](https://github.com/maxia-cl/KiBoard-windows-host-releases), que es
-público porque el updater necesita un feed que pueda leer sin token. El endpoint del updater en
-`src-tauri/tauri.conf.json` apunta ahí.
-
-**Dos cosas siguen siendo de v1 y hay que reemplazarlas antes del primer release de v2:**
-
-1. **La clave de firma.** `plugins.updater.pubkey` sigue siendo la clave con la que firma KiBoard
-   v1. Un release de v2 firmado con una clave de v2 sería rechazado por ella. Hay que generar una,
-   guardar la mitad privada fuera de este repo, y pegar la pública en `tauri.conf.json`:
-
-   ```bash
-   npx tauri signer generate -w kiboard2-updater.key
-   ```
-
-   La clave privada y su contraseña pasan a ser los secretos `TAURI_SIGNING_PRIVATE_KEY` y
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` de lo que construya el release. Perderlas significa que
-   ningún host instalado podrá volver a actualizarse nunca — no hay recuperación, solo reinstalar a
-   mano.
-
-2. **Un token para el repo de releases.** `.github/workflows/release.yml` publica en
-   `KiBoard-windows-host-releases`, que es otro repositorio, y el `GITHUB_TOKEN` por defecto no
-   puede escribir ahí. Necesita un secreto `RELEASES_TOKEN` con permiso de escritura de contenidos
-   sobre ese repo.
-
-El workflow compila con un tag `v*`, escribe `latest.json` —el feed que lee el updater— y abre el
-release como **borrador**, así que nada se hace público sin que alguien lo mire. Se niega a correr
-sin la clave de firma, en vez de publicar un bundle que ningún host instalado aceptaría.
+Las compilaciones se publican en Releases de este repositorio. El workflow corre con un tag `v*`,
+firma los artefactos del updater, escribe `latest.json` y abre el release como **borrador** para
+revisión. Se niega a publicar si falta `TAURI_SIGNING_PRIVATE_KEY`. El script
+`tool/setup-windows-updater-signing.ps1` se ejecuta sólo una vez en la máquina de publicación y la
+clave con su contraseña deben respaldarse fuera de Git.
 
 **La versión es `2.0.0`** en `Cargo.toml` y en `tauri.conf.json`, y la app del teléfono va igual.
 `0.1.29` era donde quedó la numeración de v1 y cruzó en el port con subtree; host y teléfono
 comparten número porque con `wss://` hay que instalarlos juntos de todos modos.
 
-Hasta que exista la clave el updater simplemente no encuentra nada, que es el fallo seguro. El
-endpoint apuntaba al feed de v1 — ese **no** era seguro: la firma coincidía, así que un host de v2
-podía haberse instalado v1 encima.
+La clave pública del updater queda en `tauri.conf.json`; su mitad privada existe únicamente como
+secreto de GitHub Actions y en el respaldo protegido del responsable de publicación.
 
 ## Stack
 
@@ -119,3 +94,7 @@ Todo el código va en inglés — identificadores, comentarios, commits y logs. 
 usuario pasan por `i18n`, nunca van en línea. Los documentos van en inglés y español
 (`NOMBRE.md` / `NOMBRE.es.md`). Ver
 [`CONTRIBUTING.es.md`](https://github.com/maxia-cl/KiBoard-protocol/blob/main/CONTRIBUTING.es.md).
+
+## Licencia
+
+KiBoard es código abierto bajo la [licencia MIT](LICENSE).
