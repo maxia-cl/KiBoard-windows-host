@@ -230,11 +230,13 @@ mod tests {
 
     #[test]
     fn a_successful_speed_press_is_visible_before_codex_writes_its_event() {
-        let mut cache = CodexSpeedCache::default();
+        let mut cache = CodexSpeedCache {
+            fast: Some(true),
+            ..CodexSpeedCache::default()
+        };
 
         // The event may already have updated the cache before SendInput returns. The transition
         // must still be based on the state captured before the shortcut, not on this new value.
-        cache.fast = Some(true);
         cache.set_after_press(false);
         assert_eq!(cache.fast, Some(true));
 
