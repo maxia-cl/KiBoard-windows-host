@@ -29,6 +29,30 @@ fn current_layout() -> &'static Mutex<Option<AutoLayout>> {
     CURRENT_LAYOUT.get_or_init(|| Mutex::new(None))
 }
 
+/// The same automatic surface the Android app renders, exposed to the Windows read-only preview.
+/// Three cells are reserved for the foreground-app panel, exactly like the phone's `hello`.
+pub fn desktop_auto_preview(page: usize) -> serde_json::Value {
+    // A fresh process can be opened before the 500 ms foreground watcher sees any app. Draw the
+    // generic automatic board instead of leaving a large empty window; the first real layout
+    // replaces it on the next poll. Clone before calling `layout_for`, which takes the config lock.
+    let layout = current_layout()
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| crate::engine::layout::layout_for(crate::HOST_NAME, "", "", None));
+    desktop_auto_preview_for(&layout, page, crate::i18n::host_lang())
+}
+
+fn desktop_auto_preview_for(
+    layout: &AutoLayout,
+    page: usize,
+    lang: crate::i18n::Lang,
+) -> serde_json::Value {
+    let grid = Grid::new(3, 5).reserving(3);
+    serde_json::from_str(&auto_layout_json(layout, grid, page, lang))
+        .unwrap_or(serde_json::Value::Null)
+}
+
 /// The auto-mode layout rendered for THIS session's grid and page, or `None` before the poll has
 /// resolved one.
 fn auto_for(s: &Session) -> Option<String> {
@@ -1133,5 +1157,30 @@ mod tests {
         assert!(preloads_for(&session()).is_empty());
 
         clear_preview();
+    }
+
+    #[test]
+    fn windows_auto_preview_uses_the_android_landscape_surface() {
+        let layout = AutoLayout {
+            profile_id: "test".into(),
+            app_name: "Test app".into(),
+            keys: (0..15)
+                .map(|pos| Key {
+                    pos,
+                    label: format!("k{pos}"),
+                    action: Some("noop".into()),
+                    kind: KeyKind::Action,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+
+        let preview = desktop_auto_preview_for(&layout, 0, crate::i18n::Lang::Es);
+        assert_eq!(preview["grid"]["rows"], 3);
+        assert_eq!(preview["grid"]["cols"], 5);
+        assert_eq!(preview["keys"].as_array().unwrap().len(), 12);
+        assert_eq!(preview["pages"], 2);
+        assert_eq!(preview["source"]["appName"], "Test app");
     }
 }

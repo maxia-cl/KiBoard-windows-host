@@ -13,12 +13,12 @@
  * the pair was confusing, which defeats the point of a WYSIWYG editor.
  *
  * Kept in step with `KiBoard-app/lib/ui/deck/adaptive_grid.dart`, where the phone fixes 5 keys
- * along the long edge and 2 along the short one. ponytail: two constants in two repositories
+ * along the long edge and 3 along the short one. ponytail: two constants in two repositories
  * rather than a protocol round trip for two integers — `deck-tokens.json` never carried this
  * number, and a `gridPresets` entry would mean three pull requests and a re-tag to change it.
  * Nothing breaks if they drift, the counts simply stop matching again.
  */
-export const AUTHORING_GRID = { rows: 2, cols: 5 };
+export const AUTHORING_GRID = { rows: 3, cols: 5 };
 export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols;
 
 export function emptyKey(pos) {

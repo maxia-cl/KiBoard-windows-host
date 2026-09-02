@@ -9,12 +9,15 @@
     selected = false,
     isDropTarget = false,
     replaceBlink = false,
+    interactive = true,
     onselect = () => {},
     ondblclick = () => {},
     onpointerdown = () => {},
   } = $props();
 </script>
 
+<!-- role and tabindex are paired at runtime by the interactive prop. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="key"
   class:empty={keyData.kind === "empty"}
@@ -23,21 +26,22 @@
   class:selected
   class:drop-target={isDropTarget}
   class:replace-blink={replaceBlink}
+  class:preview={!interactive}
   style:background-color={keyData.color ?? null}
   data-drop-key
   data-page-id={pageId ?? ""}
   data-pos={pos}
-  onpointerdown={(e) => onpointerdown(e)}
-  onclick={() => onselect()}
-  ondblclick={() => ondblclick()}
+  onpointerdown={(e) => interactive && onpointerdown(e)}
+  onclick={() => interactive && onselect()}
+  ondblclick={() => interactive && ondblclick()}
   onkeydown={(e) => {
-    if (e.key === "Enter" || e.key === " ") {
+    if (interactive && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       onselect();
     }
   }}
-  role="button"
-  tabindex="0"
+  role={interactive ? "button" : undefined}
+  tabindex={interactive ? "0" : undefined}
 >
   {#if keyData.kind !== "empty"}
     {#if keyData.state?.on}<span class="state-dot"></span>{/if}
@@ -58,7 +62,13 @@
     width: var(--deck-key-size);
     height: var(--deck-key-size);
     border-radius: var(--deck-key-corner-radius);
-    background: var(--deck-color-key-default-background);
+    background-color: var(--deck-color-key-default-background);
+    background-image: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 10%) 0,
+      transparent 48%,
+      rgb(0 0 0 / 9%) 100%
+    );
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -68,22 +78,22 @@
     user-select: none;
     overflow: hidden;
     outline: none;
-    box-shadow: none;
-    border: none;
+    box-shadow: 0 5px 10px -3px rgb(0 0 0 / 65%);
+    border: 1px solid rgb(0 0 0 / 28%);
     transition:
       transform var(--deck-press-duration) ease,
       filter var(--deck-press-duration) ease,
       outline-color 0.12s ease;
   }
   .key.empty {
-    background: var(--deck-color-key-empty-background);
+    background-color: var(--deck-color-key-empty-background);
     cursor: default;
   }
   .key.folder {
-    background: var(--deck-color-key-default-background);
+    background-color: var(--deck-color-key-default-background);
   }
   .key.danger {
-    background: var(--deck-color-key-danger-background);
+    background-color: var(--deck-color-key-danger-background);
   }
   .key.selected {
     outline: 2px solid var(--deck-color-accent);
@@ -105,6 +115,10 @@
   .key:active:not(.empty) {
     transform: scale(var(--deck-press-scale));
     filter: brightness(calc(1 - var(--deck-press-darken-percent) / 100));
+  }
+  .key.preview {
+    cursor: default;
+    pointer-events: none;
   }
   .glyph {
     font-size: calc(var(--deck-key-size) * 0.46);

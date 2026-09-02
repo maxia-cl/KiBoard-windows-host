@@ -124,6 +124,13 @@ fn host_status() -> serde_json::Value {
     })
 }
 
+/// Live, read-only Auto preview for the Windows window. It deliberately uses the phone's
+/// landscape grid and reserve so both applications show the same surface.
+#[tauri::command]
+fn auto_preview(page: usize) -> serde_json::Value {
+    net::ws::desktop_auto_preview(page)
+}
+
 /// The language the editor window should speak: this PC's, never the phone's.
 ///
 /// Same source as the tray menu ([`i18n::host_lang`]), so the two halves of the host cannot end up
@@ -496,6 +503,7 @@ pub fn run() {
             obs_info,
             set_obs_password,
             host_status,
+            auto_preview,
             host_lang,
             set_analytics,
             open_donate,

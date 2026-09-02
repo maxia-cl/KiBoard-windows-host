@@ -356,6 +356,13 @@ pub async fn watch_active_app() {
             ),
             Err(_) => (String::new(), String::new(), String::new(), 0),
         };
+        // Opening KiBoard to inspect Auto must not replace the phone's useful board with a
+        // generic board for KiBoard itself. Treat the host window as transparent and keep the
+        // last real foreground application until the user returns to one.
+        if pid == std::process::id() {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            continue;
+        }
         let foreground = platform::foreground_window();
         if app != last_app {
             last_app = app.clone();

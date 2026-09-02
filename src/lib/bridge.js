@@ -22,6 +22,11 @@ export async function loadDecks() {
   return await invoke("get_decks");
 }
 
+/** The current automatic layout, rendered for the same 3x5 landscape surface as Android. */
+export async function loadAutoPreview(page = 0) {
+  return await invoke("auto_preview", { page });
+}
+
 /** Resolves to `{ ok }` or `{ ok: false, error }` — the host validates before it writes. */
 export async function saveDecks(decks) {
   return await invoke("save_decks", { decks });

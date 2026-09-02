@@ -138,12 +138,20 @@ const STRINGS = {
   "cat.pages": ["Páginas", "Pages", "页面"],
 
   // AutoTab.svelte
-  "auto.search": ["🔍 buscar ~100 perfiles…", "🔍 search ~100 profiles…", "🔍 搜索约 100 个配置…"],
-  "auto.hint": [
-    "Vista previa de solo lectura. Los perfiles del modo automático cambian solos cuando cambia la app en primer plano — no se configuran arrastrando aquí, solo se miran.",
-    "Read-only preview. Auto-mode profiles switch by themselves when the foreground app changes — they aren't configured by dragging here, only browsed.",
-    "只读预览。自动模式的配置会随前台应用切换而自动切换 — 这里只能浏览，不能拖拽配置。",
+  "auto.live": ["Vista previa en vivo", "Live preview", "实时预览"],
+  "auto.following": [
+    "Es el mismo tablero que está viendo el teléfono y cambia con la app activa.",
+    "This is the same deck shown on the phone and follows the active app.",
+    "这与手机上显示的面板相同，并会跟随当前应用。",
   ],
+  "auto.waiting": [
+    "Esperando el primer tablero automático…",
+    "Waiting for the first automatic deck…",
+    "正在等待第一个自动面板…",
+  ],
+  "auto.launcher": ["Launcher", "Launcher", "启动器"],
+  "auto.settings": ["Ajustes", "Settings", "设置"],
+  "auto.page": ["Página {0} de {1}", "Page {0} of {1}", "第 {0} 页，共 {1} 页"],
 
   // Device.svelte
   "device.deck": ["Deck: {0}", "Deck: {0}", "Deck：{0}"],
