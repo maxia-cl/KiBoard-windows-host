@@ -77,6 +77,12 @@ a number because `wss://` means they have to be installed together anyway.
 The updater public key is committed in `tauri.conf.json`; its private half is stored only as a
 GitHub Actions secret and in the release operator's protected backup.
 
+Install a release through the NSIS/MSI bundle produced by `npx tauri build` or downloaded from
+GitHub Releases. Never copy `src-tauri/target/release/desktop.exe` after a raw Cargo build: without
+Tauri's `custom-protocol` feature that executable points its window at the development server on
+`localhost`. For local testing, run `tool/install-built-release.ps1`; it accepts only Tauri's NSIS
+bundle and restarts the installed application.
+
 ## Stack
 
 Tauri 2 + Rust, editor UI in Svelte 5 + Vite. Windows first; platform-specific code is isolated

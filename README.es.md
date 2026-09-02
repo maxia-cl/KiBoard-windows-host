@@ -81,6 +81,13 @@ comparten número porque con `wss://` hay que instalarlos juntos de todos modos.
 La clave pública del updater queda en `tauri.conf.json`; su mitad privada existe únicamente como
 secreto de GitHub Actions y en el respaldo protegido del responsable de publicación.
 
+Una release debe instalarse desde el paquete NSIS/MSI producido por `npx tauri build` o descargado
+desde GitHub Releases. Nunca se debe copiar `src-tauri/target/release/desktop.exe` después de un
+build directo de Cargo: sin la feature `custom-protocol` de Tauri, ese ejecutable deja la ventana
+apuntando al servidor de desarrollo en `localhost`. Para pruebas locales se debe ejecutar
+`tool/install-built-release.ps1`: sólo acepta el paquete NSIS de Tauri y reinicia la aplicación
+instalada.
+
 ## Stack
 
 Tauri 2 + Rust, UI del editor en Svelte 5 + Vite. Windows primero; el código específico de
