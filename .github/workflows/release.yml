@@ -52,5 +52,5 @@ jobs:
           releaseName: KiBoard ${{ github.ref_name }}
           releaseBody: See CHANGELOG.md in the host repository.
           releaseDraft: true
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           updaterJsonPreferNsis: true
