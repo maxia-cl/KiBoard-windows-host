@@ -191,23 +191,50 @@ fn save_profiles(profiles: Vec<Profile>) -> serde_json::Value {
 // Editor (F5): the decks of manual mode, on real data
 // ---------------------------------------------------------------------------
 
-/// The decks as stored. Same struct that travels on the wire (§3), so the editor cannot drift
+const LAUNCHER_DECK_ID: &str = "launcher";
+
+/// Launcher is generated from recent/open applications and belongs to Auto. The Windows editor
+/// only owns fixed Manual decks, so Launcher must never enter its editable state.
+fn editable_manual_decks(decks: &[config::Deck]) -> Vec<config::Deck> {
+    decks
+        .iter()
+        .filter(|deck| deck.id != LAUNCHER_DECK_ID)
+        .cloned()
+        .collect()
+}
+
+/// Puts the host-owned Launcher back after an editor save/preview. Filtering here as well as in
+/// `get_decks` is deliberate: a direct Tauri invocation or a modified frontend must not be able to
+/// replace or delete an automatic surface.
+fn with_protected_launcher(
+    mut edited: Vec<config::Deck>,
+    stored: &[config::Deck],
+) -> Vec<config::Deck> {
+    edited.retain(|deck| deck.id != LAUNCHER_DECK_ID);
+    if let Some(launcher) = stored.iter().find(|deck| deck.id == LAUNCHER_DECK_ID) {
+        edited.push(launcher.clone());
+    }
+    edited
+}
+
+/// Only fixed Manual decks. Same struct that travels on the wire (§3), so the editor cannot drift
 /// from the protocol by editing a shape only it understands.
 #[tauri::command]
 fn get_decks() -> Vec<config::Deck> {
-    config().lock().unwrap().decks.clone()
+    editable_manual_decks(&config().lock().unwrap().decks)
 }
 
 /// Saves the edited decks. Every connected phone in manual mode is re-sent its layout, so the
 /// editor's device and the real one never disagree about what a key does.
 #[tauri::command]
 fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
-    if let Err(e) = engine::deck::validate(&decks) {
-        // Refusing beats saving a deck whose keys resolve to nothing on the phone.
-        return json!({ "ok": false, "error": e });
-    }
     {
         let mut cfg = config().lock().unwrap();
+        let decks = with_protected_launcher(decks, &cfg.decks);
+        if let Err(e) = engine::deck::validate(&decks) {
+            // Refusing beats saving a deck whose keys resolve to nothing on the phone.
+            return json!({ "ok": false, "error": e });
+        }
         cfg.decks = decks;
         cfg.save();
         // A key that lost its second state, or a page that was deleted, leaves its remembered face
@@ -228,10 +255,17 @@ fn save_decks(decks: Vec<config::Deck>) -> serde_json::Value {
 /// a broken deck in someone's hand — and unlike a save, nobody would be looking at the error.
 #[tauri::command]
 fn preview_decks(decks: Vec<config::Deck>) -> serde_json::Value {
-    if let Err(e) = engine::deck::validate(&decks) {
+    let manual_decks = editable_manual_decks(&decks);
+    let validated = {
+        let cfg = config().lock().unwrap();
+        with_protected_launcher(manual_decks.clone(), &cfg.decks)
+    };
+    if let Err(e) = engine::deck::validate(&validated) {
         return json!({ "ok": false, "error": e });
     }
-    net::ws::set_preview(decks);
+    // Preview owns Manual only. Launcher is overlaid live from config by `with_decks`, so recent
+    // apps can keep changing while the editor is open.
+    net::ws::set_preview(manual_decks);
     json!({ "ok": true })
 }
 
@@ -592,7 +626,36 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_file_name;
+    use super::{editable_manual_decks, safe_file_name, with_protected_launcher};
+    use crate::config::Deck;
+
+    fn deck(id: &str, name: &str) -> Deck {
+        Deck {
+            id: id.into(),
+            name: name.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_manual_editor_never_receives_launcher() {
+        let stored = vec![deck("starter", "KiBoard"), deck("launcher", "Launcher")];
+        let editable = editable_manual_decks(&stored);
+        assert_eq!(editable.len(), 1);
+        assert_eq!(editable[0].id, "starter");
+    }
+
+    #[test]
+    fn saving_manual_decks_cannot_replace_or_delete_launcher() {
+        let stored = vec![deck("starter", "KiBoard"), deck("launcher", "Generated")];
+        let submitted = vec![deck("starter", "Edited"), deck("launcher", "Tampered")];
+        let merged = with_protected_launcher(submitted, &stored);
+
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].name, "Edited");
+        assert_eq!(merged[1].id, "launcher");
+        assert_eq!(merged[1].name, "Generated");
+    }
 
     /// `export_deck` turns a deck id into a path, and a deck id can arrive from a file somebody
     /// else wrote. Everything below would otherwise escape the decks folder or name a device.

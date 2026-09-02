@@ -367,8 +367,8 @@ pub(crate) struct Session {
     pub(crate) dragging: bool,
 }
 
-/// Decks the editor is showing but has NOT saved (F5 live preview). While this is set it stands in
-/// for `config.decks` everywhere a phone is concerned.
+/// Manual decks the editor is showing but has NOT saved (F5 live preview). Launcher never enters
+/// this collection: it remains the live automatic deck from `config.decks`.
 static PREVIEW: OnceLock<Mutex<Option<Vec<crate::config::Deck>>>> = OnceLock::new();
 fn preview() -> &'static Mutex<Option<Vec<crate::config::Deck>>> {
     PREVIEW.get_or_init(|| Mutex::new(None))
@@ -390,8 +390,8 @@ pub fn clear_preview() {
     }
 }
 
-/// Runs `f` against the decks a phone should currently see: the editor's unsaved preview when
-/// there is one, otherwise the saved config.
+/// Runs `f` against the decks a phone should currently see: the editor's unsaved Manual decks plus
+/// the live generated Launcher, or the saved config when there is no preview.
 ///
 /// EVERY phone-facing read goes through here, rendering and press resolution alike. If the two
 /// disagreed, §4.2's guarantee would break: the phone would be shown one layout and its press
@@ -399,7 +399,21 @@ pub fn clear_preview() {
 fn with_decks<T>(f: impl FnOnce(&[crate::config::Deck]) -> T) -> T {
     let preview = preview().lock().unwrap();
     match preview.as_ref() {
-        Some(decks) => f(decks),
+        Some(decks) => {
+            let cfg = config().lock().unwrap();
+            let mut visible: Vec<_> = decks
+                .iter()
+                .filter(|deck| deck.id != LAUNCHER_DECK_ID)
+                .cloned()
+                .collect();
+            visible.extend(
+                cfg.decks
+                    .iter()
+                    .filter(|deck| deck.id == LAUNCHER_DECK_ID)
+                    .cloned(),
+            );
+            f(&visible)
+        }
         None => f(&config().lock().unwrap().decks),
     }
 }
