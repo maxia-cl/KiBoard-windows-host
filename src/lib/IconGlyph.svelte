@@ -1,8 +1,9 @@
 <script>
-  import { iconGlyph } from "./icons.js";
+  import { iconAsset, iconGlyph } from "./icons.js";
 
   let { name = null, color = null } = $props();
-  let filledCircle = $derived(name === "accept" || name === "close" || name === "new");
+  let asset = $derived(iconAsset(name));
+  let filledCircle = $derived(!asset && (name === "accept" || name === "close" || name === "new"));
 </script>
 
 <span
@@ -12,7 +13,13 @@
   style:color={color ?? null}
   aria-hidden="true"
 >
-  <span class="mark">{iconGlyph(name)}</span>
+  {#if asset?.monochrome}
+    <span class="asset-mask" style={`--asset: url("${asset.url}")`}></span>
+  {:else if asset}
+    <img class="asset-image" src={asset.url} alt="" />
+  {:else}
+    <span class="mark">{iconGlyph(name)}</span>
+  {/if}
 </span>
 
 <style>
@@ -21,6 +28,21 @@
     place-items: center;
     line-height: 1;
     vertical-align: middle;
+  }
+  .asset-image,
+  .asset-mask {
+    width: 0.95em;
+    height: 0.95em;
+  }
+  .asset-image {
+    display: block;
+    object-fit: contain;
+  }
+  .asset-mask {
+    display: block;
+    background: currentColor;
+    -webkit-mask: var(--asset) center / contain no-repeat;
+    mask: var(--asset) center / contain no-repeat;
   }
   .filled-circle {
     width: 0.95em;

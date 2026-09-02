@@ -14,6 +14,12 @@
     ondblclick = () => {},
     onpointerdown = () => {},
   } = $props();
+
+  function initials(label) {
+    const words = (label ?? "").trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return "?";
+    return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase();
+  }
 </script>
 
 <!-- role and tabindex are paired at runtime by the interactive prop. -->
@@ -48,6 +54,8 @@
     <span class="glyph" class:directional={isDirectionalIcon(keyData.icon)}>
       {#if keyData.image}
         <img src={keyData.image} alt="" draggable="false" />
+      {:else if keyData.icon === "app"}
+        <span class="app-monogram">{initials(keyData.label)}</span>
       {:else}
         <IconGlyph name={keyData.icon} color={keyData.iconColor} />
       {/if}
@@ -123,6 +131,19 @@
   .glyph {
     font-size: calc(var(--deck-key-size) * 0.46);
     line-height: 1;
+  }
+  .app-monogram {
+    width: 0.94em;
+    height: 0.94em;
+    display: grid;
+    place-items: center;
+    border-radius: 26%;
+    background: linear-gradient(145deg, #55c8f4, #7659c8);
+    color: #fff;
+    font-size: 0.38em;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 20%);
   }
   .glyph.directional {
     font-size: calc(var(--deck-key-size) * 0.68);

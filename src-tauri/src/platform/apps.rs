@@ -5,7 +5,7 @@
 //! ponytail: the COM enumeration route (IKnownFolderManager + IEnumShellItems) is ~150 lines of
 //! unsafe for the identical list; upgrade if the one-off ~700 ms boot cost ever matters.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 /// One entry of the catalogue. `id` is what a `launch:` / `focus:` / `kill:` key stores.
@@ -26,6 +26,13 @@ pub struct App {
 
 /// Thirty rolling days, not "this calendar month": an app used 29 days ago remains useful today.
 const RECENT_WINDOW_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+const RECENT_STORE_VERSION: u8 = 2;
+
+#[derive(Default, serde::Deserialize, serde::Serialize)]
+struct RecentStore {
+    version: u8,
+    apps: HashMap<String, u64>,
+}
 
 fn now_millis() -> u64 {
     std::time::SystemTime::now()
@@ -39,18 +46,46 @@ fn recent_path() -> std::path::PathBuf {
 }
 
 fn save_recent(values: &HashMap<String, u64>) {
-    if let Ok(json) = serde_json::to_string_pretty(values) {
+    let store = RecentStore {
+        version: RECENT_STORE_VERSION,
+        apps: values.clone(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&store) {
         let _ = std::fs::write(recent_path(), json);
     }
 }
 
-/// Loads KiBoard's own foreground history, then bootstraps it from Windows UserAssist and apps
-/// that are open right now. UserAssist is useful for the first run; the local file is authoritative
-/// afterwards because Windows does not record every launch path consistently.
+fn parse_recent(value: &str) -> HashMap<String, u64> {
+    if let Ok(store) = serde_json::from_str::<RecentStore>(value) {
+        return if store.version == RECENT_STORE_VERSION {
+            store.apps
+        } else {
+            HashMap::new()
+        };
+    }
+
+    // Legacy stores were a bare map. Their startup bootstrap wrote one identical millisecond into
+    // every app that happened to be open; no two deliberate foreground changes share an exact
+    // millisecond, so remove only those unmistakable batches and preserve the user's real history.
+    let mut legacy: HashMap<String, u64> = serde_json::from_str(value).unwrap_or_default();
+    let mut counts = HashMap::new();
+    for used in legacy.values() {
+        *counts.entry(*used).or_insert(0usize) += 1;
+    }
+    legacy.retain(|_, used| counts.get(used) == Some(&1));
+    legacy
+}
+
+/// Loads KiBoard's own deliberate foreground history, then bootstraps it from Windows UserAssist.
+///
+/// Version 1 also marked every open window as recent during host startup. That promoted Spotify,
+/// hardware helpers and other auto-start processes even when the user never touched them, so the
+/// versioned store deliberately removes that legacy startup batch once. Unique intentional opens
+/// survive the migration, and KiBoard's foreground watcher is authoritative after that.
 fn load_recent() -> HashMap<String, u64> {
     let mut values: HashMap<String, u64> = std::fs::read_to_string(recent_path())
         .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .map(|s| parse_recent(&s))
         .unwrap_or_default();
     let apps = catalogue();
     for app in apps {
@@ -58,17 +93,14 @@ fn load_recent() -> HashMap<String, u64> {
             values.insert(app.id.clone(), app.last_opened);
         }
     }
-    // First run should not produce an almost-empty launcher while the user already has their daily
-    // tools on screen. Open windows are indisputably recent and can be gathered in one pass.
-    let ids: Vec<String> = apps.iter().map(|a| a.id.clone()).collect();
     let now = now_millis();
-    for (app, open) in apps.iter().zip(running(&ids)) {
-        if open {
-            values.insert(app.id.clone(), now);
-        }
-    }
     let cutoff = now.saturating_sub(RECENT_WINDOW_MS);
-    values.retain(|_, used| *used >= cutoff && *used <= now.saturating_add(24 * 60 * 60 * 1000));
+    let allowed: HashSet<&str> = apps.iter().map(|app| app.id.as_str()).collect();
+    values.retain(|id, used| {
+        allowed.contains(id.as_str())
+            && *used >= cutoff
+            && *used <= now.saturating_add(24 * 60 * 60 * 1000)
+    });
     save_recent(&values);
     values
 }
@@ -187,6 +219,70 @@ fn stem(path: &str) -> String {
     name.strip_suffix(".exe").unwrap_or(&name).to_string()
 }
 
+/// A Start-menu entry is not necessarily an application: language runtimes, documentation,
+/// installers and maintenance helpers register there too. Keep launchable GUI applications and
+/// reject the entries that cannot become a useful foreground surface on the phone.
+fn is_visual_launcher_entry(name: &str, id: &str, exe: &str, subsystem: Option<u16>) -> bool {
+    // IMAGE_SUBSYSTEM_WINDOWS_CUI. A terminal application such as Windows Terminal is packaged and
+    // has no direct exe here, while python.exe/node.exe are plain console runtimes and do.
+    if subsystem == Some(3) {
+        return false;
+    }
+
+    let name = name.trim().to_ascii_lowercase();
+    let binary = stem(exe);
+    let runtime_binary = matches!(
+        binary.as_str(),
+        "python"
+            | "pythonw"
+            | "pydoc"
+            | "pip"
+            | "node"
+            | "npm"
+            | "npx"
+            | "java"
+            | "javaw"
+            | "wscript"
+            | "cscript"
+            | "crashpad_handler"
+    );
+    if runtime_binary {
+        return false;
+    }
+
+    let python_tool = name.starts_with("python ")
+        || name.starts_with("idle (python")
+        || name.starts_with("pydoc")
+        || name.contains("(python ");
+    let maintenance = name == "uninstall"
+        || name.starts_with("uninstall ")
+        || name.ends_with(" updater")
+        || name.ends_with(" update")
+        || name.ends_with(" installer")
+        || name.contains("install manager")
+        || name.contains("module docs")
+        || name.ends_with(" manuals")
+        || name.ends_with(" documentation");
+    let id = id.to_ascii_lowercase();
+    let helper = id.contains("crashpad_handler") || id.ends_with("\\uninstall.exe");
+    !(python_tool || maintenance || helper)
+}
+
+#[cfg(windows)]
+fn pe_subsystem(exe: &str) -> Option<u16> {
+    let bytes = std::fs::read(exe).ok()?;
+    if bytes.get(0..2)? != b"MZ" {
+        return None;
+    }
+    let pe = u32::from_le_bytes(bytes.get(0x3c..0x40)?.try_into().ok()?) as usize;
+    if bytes.get(pe..pe + 4)? != b"PE\0\0" {
+        return None;
+    }
+    // COFF header is 20 bytes; Subsystem sits 68 bytes into both PE32 and PE32+ optional headers.
+    let at = pe.checked_add(4 + 20 + 68)?;
+    Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+}
+
 /// Every open window of `id`. Empty means the app is not running.
 /// The AUMID lookup is one COM call per window, so it only runs for AUMID targets.
 fn windows_of(id: &str) -> Vec<isize> {
@@ -230,16 +326,20 @@ fn exe_of(id: &str) -> &'static str {
 pub fn icon(id: &str) -> String {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
-    let exe = exe_of(id);
-    if !exe.is_empty() {
-        return crate::platform::icon_cached(exe);
-    }
     static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(b) = cache.lock().unwrap().get(id) {
         return b.clone();
     }
-    let b = imp::shell_tile_b64(id);
+    // The AppsFolder tile preserves the shortcut/package's 256 px artwork. Pulling directly from
+    // an exe often returns its legacy 32 px ICO frame (Chrome and ChatGPT were visibly pixelated).
+    let mut b = imp::shell_tile_b64(id);
+    if b.is_empty() {
+        let exe = exe_of(id);
+        if !exe.is_empty() {
+            b = crate::platform::icon_cached(exe);
+        }
+    }
     cache.lock().unwrap().insert(id.to_string(), b.clone());
     b
 }
@@ -381,6 +481,12 @@ foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
                     return None;
                 }
                 let exe = resolve_exe(&id);
+                let subsystem = (!exe.is_empty())
+                    .then(|| super::pe_subsystem(&exe))
+                    .flatten();
+                if !super::is_visual_launcher_entry(&name, &id, &exe, subsystem) {
+                    return None;
+                }
                 let last_opened = v["LastOpened"].as_u64().unwrap_or(0);
                 Some(App {
                     id,
@@ -425,9 +531,9 @@ foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
         }
     }
 
-    /// Side of a shell tile in pixels. The phone draws keys around 113 pt, so 96 is already more
-    /// than it needs and every packaged app ships an asset at least this big.
-    const TILE_PX: i32 = 96;
+    /// Side of a shell tile in pixels. This is intentionally larger than today's keys: the same
+    /// source can be reused on high-density phones without magnifying a 96 px bitmap.
+    const TILE_PX: i32 = 256;
 
     /// The icon the Start menu draws for a catalogue entry, as base64 PNG.
     ///
@@ -440,7 +546,8 @@ foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
         use windows::Win32::Graphics::Gdi::{DeleteObject, HGDIOBJ};
         use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
         use windows::Win32::UI::Shell::{
-            IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY,
+            IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
+            SIIGBF_ICONONLY,
         };
         unsafe {
             // Harmless if this thread is already initialized (or initialized in another mode):
@@ -459,7 +566,7 @@ foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
                     cx: TILE_PX,
                     cy: TILE_PX,
                 },
-                SIIGBF_ICONONLY,
+                SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
             ) else {
                 return String::new();
             };
@@ -602,7 +709,10 @@ pub use imp::{activate, catalogue};
 mod tests {
     use std::collections::HashMap;
 
-    use super::{matches, ranked_recent, App, RECENT_WINDOW_MS};
+    use super::{
+        is_visual_launcher_entry, matches, parse_recent, ranked_recent, App, RECENT_STORE_VERSION,
+        RECENT_WINDOW_MS,
+    };
 
     fn app(id: &str, name: &str) -> App {
         App {
@@ -634,6 +744,54 @@ mod tests {
             .map(|app| app.id.as_str())
             .collect();
         assert_eq!(ids, ["today-a", "today-b", "yesterday"]);
+    }
+
+    #[test]
+    fn legacy_recent_cache_is_dropped_so_startup_apps_do_not_leak_into_launcher() {
+        let legacy = r#"{"Spotify":123,"WhatsApp":123,"Chrome":456}"#;
+        let migrated = parse_recent(legacy);
+        assert_eq!(migrated.len(), 1);
+        assert_eq!(migrated.get("Chrome"), Some(&456));
+
+        let current = format!(
+            r#"{{"version":{},"apps":{{"Chrome":789}}}}"#,
+            RECENT_STORE_VERSION
+        );
+        assert_eq!(parse_recent(&current).get("Chrome"), Some(&789));
+    }
+
+    #[test]
+    fn launcher_rejects_runtimes_docs_and_maintenance_but_keeps_gui_apps() {
+        assert!(!is_visual_launcher_entry(
+            "Python 3.14",
+            r"C:\Python\python.exe",
+            r"C:\Python\python.exe",
+            Some(3)
+        ));
+        assert!(!is_visual_launcher_entry(
+            "IDLE (Python 3.14)",
+            "Microsoft.AutoGenerated.X",
+            "",
+            None
+        ));
+        assert!(!is_visual_launcher_entry(
+            "Visual Studio Installer",
+            "VisualStudio.Installer",
+            "",
+            None
+        ));
+        assert!(is_visual_launcher_entry(
+            "Google Chrome",
+            "Chrome",
+            "",
+            None
+        ));
+        assert!(is_visual_launcher_entry(
+            "ChatGPT",
+            "OpenAI.Codex_x!App",
+            "",
+            None
+        ));
     }
 
     #[test]

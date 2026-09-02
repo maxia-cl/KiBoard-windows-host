@@ -131,6 +131,26 @@ const GLYPHS = {
   effort: "\u{1F39A}️",
 };
 
+// Option A: the visually distinctive AI-deck glyphs are shared assets, not platform emoji.
+// Vite fingerprints these files for the Windows bundle; Flutter packages the same protocol folder.
+const EXPRESSIVE = {
+  model: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/model.svg", import.meta.url).href },
+  effort: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/effort.svg", import.meta.url).href },
+  find: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/find.svg", import.meta.url).href },
+  bolt: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/bolt.svg", import.meta.url).href, monochrome: true },
+  prev: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/prev.svg", import.meta.url).href, monochrome: true },
+  next: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/next.svg", import.meta.url).href, monochrome: true },
+  scrollup: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/scrollup.svg", import.meta.url).href, monochrome: true },
+  scrolldown: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/scrolldown.svg", import.meta.url).href, monochrome: true },
+  undo: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/undo.svg", import.meta.url).href, monochrome: true },
+  accept: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/accept.svg", import.meta.url).href },
+  close: { url: new URL("../../KiBoard-protocol/protocol/icons/expressive/close.svg", import.meta.url).href },
+};
+
+export function iconAsset(name) {
+  return EXPRESSIVE[name] ?? null;
+}
+
 // Solid triangles occupy less visible area than emoji and other standard glyphs. Key renderers
 // use this semantic set to enlarge only directional controls.
 export const directionalIconNames = new Set([

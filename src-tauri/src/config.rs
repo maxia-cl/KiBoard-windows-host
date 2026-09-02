@@ -2324,12 +2324,11 @@ impl Config {
                     backfill_launcher(&mut c.decks, launcher);
                 }
             }
-            // Launcher is an automatic surface, not a Manual deck. Older builds allowed editing
-            // or deleting it; v3 restores every such installation to the generated rolling-month
-            // deck and reserves that id from now on.
-            if c.decks_version < 3 {
-                replace_launcher(&mut c.decks, launcher_deck());
-            }
+            // Launcher is an automatic surface, not a Manual deck. Rebuild it on every host start:
+            // its rolling month, ordering, icon policy and visual-app filter can all change while
+            // KiBoard is closed. Waiting for the next foreground transition leaves a stale page on
+            // the phone immediately after boot.
+            replace_launcher(&mut c.decks, launcher_deck());
         }
         // Recorded even when the machine currently has no launchable applications; the live
         // refresher can add Launcher later when an application becomes available.
