@@ -522,8 +522,10 @@ foreach ($key in Get-ChildItem "$root\*\Count" -ErrorAction SilentlyContinue) {
         }
         // Some entries come back with a zeroed alpha channel (a bitmap that never had one). Taken
         // literally that is a fully transparent icon, i.e. a blank key — treat it as opaque.
-        let opaque = buf.chunks_exact(4).all(|p| p[3] == 0);
-        for px in buf.chunks_exact_mut(4) {
+        let opaque = buf.as_chunks::<4>().0.iter().all(|p| p[3] == 0);
+        let (pixels, remainder) = buf.as_chunks_mut::<4>();
+        debug_assert!(remainder.is_empty());
+        for px in pixels {
             let (b, g, r, a) = (px[0], px[1], px[2], px[3]);
             if opaque {
                 px[0] = r;

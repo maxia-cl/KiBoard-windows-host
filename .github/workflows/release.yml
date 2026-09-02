@@ -24,6 +24,8 @@ jobs:
       - run: npm install
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.0
       - uses: Swatinem/rust-cache@v2
 
       # `tauri-action` builds, signs and writes `latest.json` — the feed the updater reads. Without
