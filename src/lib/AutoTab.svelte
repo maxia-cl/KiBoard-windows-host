@@ -100,6 +100,7 @@
           <div class="page-dots" aria-label={t("auto.page", page + 1, layout.pages)}>
             {#each Array(layout.pages) as _, i}
               <button
+                data-telemetry="auto_preview_page_selected"
                 class:active={i === page}
                 onclick={() => selectPage(i)}
                 aria-label={t("auto.page", i + 1, layout.pages)}

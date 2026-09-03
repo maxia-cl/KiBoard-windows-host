@@ -10,6 +10,7 @@
   import PairingPanel from "./lib/PairingPanel.svelte";
   import { listDevices, pairingStatus } from "./lib/pairing.js";
   import { invoke, isTauri } from "./lib/bridge.js";
+  import { installInteractionTracking, trackInteraction } from "./lib/telemetry.js";
   import { t } from "./lib/i18n.js";
   import {
     undo,
@@ -79,6 +80,7 @@
   }
 
   onMount(() => {
+    const stopInteractionTracking = installInteractionTracking();
     init().catch((e) => (loadError = String(e)));
 
     // B1. A PC with no phone paired to it does nothing at all, and the only way to pair is a ⚙ the
@@ -115,13 +117,20 @@
       const key = e.key.toLowerCase();
       if (key === "z") {
         e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
+        if (e.shiftKey) {
+          trackInteraction("editor_redo_shortcut");
+          redo();
+        } else {
+          trackInteraction("editor_undo_shortcut");
+          undo();
+        }
       } else if (key === "y") {
         e.preventDefault();
+        trackInteraction("editor_redo_shortcut");
         redo();
       } else if (key === "s") {
         e.preventDefault();
+        trackInteraction("editor_save_shortcut");
         save();
       }
     }
@@ -131,6 +140,7 @@
       window.removeEventListener("keydown", onKeydown);
       window.removeEventListener("beforeunload", stopPreview);
       clearInterval(poll);
+      stopInteractionTracking();
       stopPreview();
     };
   });
@@ -147,15 +157,16 @@
     -->
     <span class="brand"><i class="mark" aria-hidden="true"></i><span class="word">board</span></span>
     <div class="tabs">
-      <button class:active={mode === "auto"} onclick={leaveManual}>{t("tab.auto")}</button>
+      <button data-telemetry="auto_tab_opened" class:active={mode === "auto"} onclick={leaveManual}>{t("tab.auto")}</button>
       {#if manualEnabled}
-        <button class="manual-tab" class:active={mode === "manual"} onclick={() => (mode = "manual")}>{t("tab.manual")}</button>
+        <button data-telemetry="manual_tab_opened" class="manual-tab" class:active={mode === "manual"} onclick={() => (mode = "manual")}>{t("tab.manual")}</button>
       {/if}
     </div>
     {#if mode === "manual" && ready && deck}
       {#if decks.length > 1}
         <select
           class="deck-picker"
+          data-telemetry="editor_deck_selected"
           value={selection.deckId}
           onchange={(e) => selectDeck(e.currentTarget.value)}
         >
@@ -167,20 +178,21 @@
       <!-- onchange, not oninput: a rename is one undo step, not one per letter. -->
       <input
         class="deck-name"
+        data-telemetry="editor_deck_renamed"
         value={deck.name}
         aria-label={t("deck.name")}
         onchange={(e) => renameDeck(deck.id, e.currentTarget.value)}
       />
-      <button class="tool" disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
-      <button class="tool" disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
-      <button class="add-page" onclick={() => addPage(deck.id)}>{t("deck.addpage")}</button>
+      <button data-telemetry="editor_undo" class="tool" disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
+      <button data-telemetry="editor_redo" class="tool" disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
+      <button data-telemetry="editor_page_added" class="add-page" onclick={() => addPage(deck.id)}>{t("deck.addpage")}</button>
       <details class="more-menu">
-        <summary aria-label={t("deck.more")}>⋯</summary>
+        <summary data-telemetry="editor_more_opened" aria-label={t("deck.more")}>⋯</summary>
         <div class="menu-panel">
-          <button onclick={() => duplicateDeck(deck.id)}>{t("deck.duplicate")}</button>
-          <button onclick={() => exportSelectedDeck(deck.id)}>{t("deck.exportshort")}</button>
-          <button onclick={() => fileInput.click()}>{t("deck.importshort")}</button>
-          <button class="reset" onclick={() => simplify(deck.id)}>{t("deck.reset")}</button>
+          <button data-telemetry="editor_deck_duplicated" onclick={() => duplicateDeck(deck.id)}>{t("deck.duplicate")}</button>
+          <button data-telemetry="editor_deck_exported" onclick={() => exportSelectedDeck(deck.id)}>{t("deck.exportshort")}</button>
+          <button data-telemetry="editor_import_opened" onclick={() => fileInput.click()}>{t("deck.importshort")}</button>
+          <button data-telemetry="editor_deck_reset" class="reset" onclick={() => simplify(deck.id)}>{t("deck.reset")}</button>
         </div>
       </details>
       <input
@@ -188,17 +200,18 @@
         type="file"
         accept=".json,application/json"
         bind:this={fileInput}
+        data-telemetry="editor_deck_imported"
         onchange={onFileChosen}
       />
     {/if}
     <span class="spacer"></span>
     {#if mode === "manual"}
-      <button class="save" class:dirty={isDirty()} disabled={!isDirty()} onclick={() => save()}>
+      <button data-telemetry="editor_saved" class="save" class:dirty={isDirty()} disabled={!isDirty()} onclick={() => save()}>
         {isDirty() ? t("save.changes") : t("save.done")}
       </button>
     {/if}
     <span class="connected">📱 {t("connected", clients)}</span>
-    <button class="settings" onclick={() => (showPairing = true)} aria-label={t("settings.title")}>⚙</button>
+    <button data-telemetry="settings_opened" class="settings" onclick={() => (showPairing = true)} aria-label={t("settings.title")}>⚙</button>
   </header>
 
   {#if mode === "manual"}

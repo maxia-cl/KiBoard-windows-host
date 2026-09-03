@@ -2,6 +2,7 @@
   import { getCatalogue, dropCatalogueItem } from "./store.svelte.js";
   import IconGlyph from "./IconGlyph.svelte";
   import { t } from "./i18n.js";
+  import { trackInteraction } from "./telemetry.js";
 
   let { deckId, pageId, pos, onclose } = $props();
 
@@ -22,18 +23,23 @@
   function focusOnMount(node) {
     node.focus();
   }
+
+  function dismiss() {
+    trackInteraction("editor_assign_dismissed");
+    onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onpointerdown={onclose} role="presentation">
+<div class="overlay" onpointerdown={dismiss} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="popover" onpointerdown={(e) => e.stopPropagation()} role="presentation">
-    <input use:focusOnMount placeholder={t("search.plain")} bind:value={query} />
+    <input data-telemetry="editor_assign_searched" use:focusOnMount placeholder={t("search.plain")} bind:value={query} />
     <div class="list">
       {#each filteredGroups as group (group.id)}
         <div class="group-label">{group.label}</div>
         {#each group.items as item (item.id)}
-          <button class="item" onclick={() => assign(item)}>
+          <button data-telemetry="editor_assign_item_selected" class="item" onclick={() => assign(item)}>
             <span class="glyph">
               {#if item.image}
                 <img src={item.image} alt="" />

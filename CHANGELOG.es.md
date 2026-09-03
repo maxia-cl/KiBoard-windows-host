@@ -27,6 +27,10 @@ instalarlos juntos de todos modos.
 
 ### Añadido
 
+- **Analítica anónima de interacciones:** Aptabase ahora registra cada pulsación del tablero y las
+  principales interacciones del teléfono, editor, configuración, emparejamiento, bandeja, modos,
+  páginas y entradas. Los eventos usan una sesión estable por ejecución y metadatos fijos; se
+  excluyen nombres, acciones personalizadas y texto ingresado.
 - **El primer arranque se explica solo** (B1): sin nada emparejado, el panel de emparejamiento se
   abre por su cuenta y dice los tres pasos, incluido el diálogo de red de Windows que te deja sin
   mDNS si lo cierras.

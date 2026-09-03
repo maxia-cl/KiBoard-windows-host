@@ -10,6 +10,7 @@
     isDropTarget = false,
     replaceBlink = false,
     interactive = true,
+    telemetry = null,
     onselect = () => {},
     ondblclick = () => {},
     onpointerdown = () => {},
@@ -37,6 +38,7 @@
   data-drop-key
   data-page-id={pageId ?? ""}
   data-pos={pos}
+  data-telemetry={interactive ? telemetry : undefined}
   onpointerdown={(e) => interactive && onpointerdown(e)}
   onclick={() => interactive && onselect()}
   ondblclick={() => interactive && ondblclick()}

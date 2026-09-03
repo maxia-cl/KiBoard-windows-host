@@ -685,6 +685,139 @@ fn run_session_action(action: &str, s: &mut Session, id: &str) -> String {
     fail("unknown_action")
 }
 
+fn press_category(press: &Result<Press, &'static str>) -> &'static str {
+    match press {
+        Ok(Press::Go(_)) => "navigation",
+        Ok(Press::Toggle(_, _)) => "toggle",
+        Ok(Press::Run(action)) if is_client_action(action) => "client_screen",
+        Ok(Press::Run(action)) if action.starts_with("deck:") || action.starts_with("mode:") => {
+            "mode_navigation"
+        }
+        Ok(Press::Run(action)) if action == "windows" => "window_picker",
+        Ok(Press::Run(action)) if action.starts_with("launch:") || action.starts_with("focus:") => {
+            "app_launcher"
+        }
+        Ok(Press::Run(_)) => "action",
+        Err(_) => "invalid",
+    }
+}
+
+fn safe_press(value: &str) -> &'static str {
+    match value {
+        "short" => "short",
+        "hold" => "hold",
+        "double" => "double",
+        _ => "other",
+    }
+}
+
+static BUILTIN_PROFILE_IDS: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+
+/// Identifies shipped surfaces so a page/position can be interpreted in Aptabase. Custom profile
+/// and deck ids are deliberately collapsed: they may contain a client or project name.
+fn analytics_surface(s: &Session) -> String {
+    if s.manual {
+        return if s.deck_id == LAUNCHER_DECK_ID {
+            "launcher".into()
+        } else {
+            "manual_custom".into()
+        };
+    }
+    let profile_id = current_layout()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|layout| layout.profile_id.clone())
+        .unwrap_or_default();
+    let builtin = BUILTIN_PROFILE_IDS.get_or_init(|| {
+        crate::config::default_profiles()
+            .into_iter()
+            .map(|profile| profile.id)
+            .collect()
+    });
+    if builtin.contains(&profile_id) {
+        profile_id
+    } else {
+        "auto_custom".into()
+    }
+}
+
+fn track_mobile_interaction(interaction: &'static str, props: serde_json::Value) {
+    let mut all = serde_json::Map::new();
+    all.insert("interaction".into(), json!(interaction));
+    if let Some(extra) = props.as_object() {
+        all.extend(extra.clone());
+    }
+    crate::track_event("mobile_interaction", serde_json::Value::Object(all));
+}
+
+// Pointer movement can arrive dozens of times per second. Aptabase needs to know that the
+// trackpad was used, not receive a network request for every pixel. All discrete inputs are exact;
+// only raw mouse deltas are sampled once per second.
+static LAST_TRACKPAD_SAMPLE: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
+
+fn track_mobile_input(kind: &str) {
+    let kind = match kind {
+        "mouse" => "trackpad_move",
+        "scroll" => "scroll",
+        "hscroll" => "horizontal_scroll",
+        "zoom" => "zoom",
+        "click" => "click",
+        "drag" => "drag",
+        "vol" => "volume",
+        "text" => "dictation_submitted",
+        _ => "other",
+    };
+    if kind == "trackpad_move" {
+        let now = std::time::Instant::now();
+        let mut last = LAST_TRACKPAD_SAMPLE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap();
+        if last.is_some_and(|at| now.duration_since(at) < Duration::from_secs(1)) {
+            return;
+        }
+        *last = Some(now);
+    }
+    track_mobile_interaction("continuous_input", json!({ "kind": kind }));
+}
+
+fn track_authenticated_message(val: &serde_json::Value, s: &Session) {
+    if !s.authed {
+        return;
+    }
+    match val["type"].as_str() {
+        Some("input") => track_mobile_input(val["kind"].as_str().unwrap_or("")),
+        Some("set_mode") => track_mobile_interaction(
+            "mode_changed",
+            json!({ "mode": if val["mode"].as_str() == Some("manual") { "manual" } else { "auto" } }),
+        ),
+        Some("set_page") => track_mobile_interaction(
+            "page_changed",
+            json!({ "mode": if s.manual { "manual" } else { "auto" }, "page": val["page"].as_u64().unwrap_or(0) }),
+        ),
+        Some("set_grid") => {
+            let rows = val["grid"]["rows"].as_u64().unwrap_or(0);
+            let cols = val["grid"]["cols"].as_u64().unwrap_or(0);
+            track_mobile_interaction(
+                "orientation_changed",
+                json!({ "orientation": if cols >= rows { "landscape" } else { "portrait" }, "rows": rows, "cols": cols }),
+            );
+        }
+        Some("list_windows") => track_mobile_interaction("window_picker_opened", json!({})),
+        Some("focus_window") => track_mobile_interaction("window_selected", json!({})),
+        Some("import_profile") => track_mobile_interaction("profile_imported", json!({})),
+        Some("set_manual_enabled") => track_mobile_interaction(
+            "manual_feature_toggled",
+            json!({ "enabled": val["enabled"].as_bool().unwrap_or(false) }),
+        ),
+        Some("close_foreground_app") => {
+            track_mobile_interaction("foreground_app_closed", json!({}))
+        }
+        _ => {}
+    }
+}
+
 fn handle_message(txt: &str, s: &mut Session) -> String {
     let val: serde_json::Value = match serde_json::from_str(txt) {
         Ok(v) => v,
@@ -692,12 +825,18 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             return json!({"v":2,"type":"command_result","ok":false,"error":"bad_json"}).to_string()
         }
     };
+    track_authenticated_message(&val, s);
     match val["type"].as_str() {
         // --- Pairing (protocol/README.md §2) — no auth needed yet, this IS the auth flow. ---
         Some("pair_request") => {
             let device = val["device"].as_str().unwrap_or("unknown");
             let platform = val["platform"].as_str().unwrap_or("");
-            match crate::net::pairing::start(device, platform) {
+            let result = crate::net::pairing::start(device, platform);
+            track_mobile_interaction(
+                "pairing_requested",
+                json!({ "result": if result.is_ok() { "accepted" } else { "rejected" } }),
+            );
+            match result {
                 Ok((_, expires_in)) => {
                     json!({"v":2,"type":"pair_challenge","digits":6,"expiresIn":expires_in})
                         .to_string()
@@ -707,7 +846,12 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
         }
         Some("pair_confirm") => {
             let code = val["code"].as_str().unwrap_or("");
-            match crate::net::pairing::confirm(code) {
+            let result = crate::net::pairing::confirm(code);
+            track_mobile_interaction(
+                "pairing_confirmed",
+                json!({ "result": if result.is_ok() { "accepted" } else { "rejected" } }),
+            );
+            match result {
                 Ok(device) => json!({
                     "v":2,"type":"pair_ack","ok":true,
                     "token":device.token,"deviceId":device.device_id,"name":crate::HOST_NAME
@@ -726,6 +870,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             match crate::net::pairing::authenticate(device_id, token) {
                 Ok(()) => {
                     s.authed = true;
+                    track_mobile_interaction("host_connected", json!({}));
                     // 🆕 the client declares its grid; the host paginates every deck to it.
                     s.grid = read_grid(&val);
                     // The client's language, PER SESSION. It used to be one process-global set by
@@ -748,7 +893,10 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
                            "manualEnabled": manual_enabled, "decks": decks})
                     .to_string()
                 }
-                Err(e) => json!({"v":2,"type":"hello_ack","ok":false,"error":e}).to_string(),
+                Err(e) => {
+                    track_mobile_interaction("host_connection_failed", json!({}));
+                    json!({"v":2,"type":"hello_ack","ok":false,"error":e}).to_string()
+                }
             }
         }
         // §4.2 — the phone sends the KEY IT PRESSED, never the action. `command` (v1, where the
@@ -756,6 +904,7 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
         Some("key") => {
             let id = val["id"].as_str().unwrap_or("").to_string();
             if !s.authed {
+                track_mobile_interaction("deck_key_pressed", json!({ "result": "not_paired" }));
                 return json!({"v":2,"type":"key_result","id":id,"ok":false,"error":"not_paired"})
                     .to_string();
             }
@@ -768,13 +917,26 @@ fn handle_message(txt: &str, s: &mut Session) -> String {
             let option = val["option"].as_u64().map(|n| n as usize);
             let text = val["text"].as_str();
             let chosen = |a: String| crate::engine::actions::choose(&a, option, text);
-            match resolve_press(s, page, pos, press).and_then(|p| match p {
+            let resolved = resolve_press(s, page, pos, press).and_then(|p| match p {
                 Press::Run(a) => chosen(a).map(Press::Run).ok_or("unknown_action"),
                 Press::Toggle(a, at) => chosen(a)
                     .map(|a| Press::Toggle(a, at))
                     .ok_or("unknown_action"),
                 go => Ok(go),
-            }) {
+            });
+            track_mobile_interaction(
+                "deck_key_pressed",
+                json!({
+                    "mode": if s.manual { "manual" } else { "auto" },
+                    "surface": analytics_surface(s),
+                    "page": page,
+                    "position": pos,
+                    "press": safe_press(press),
+                    "category": press_category(&resolved),
+                    "result": if resolved.is_ok() { "accepted" } else { "rejected" },
+                }),
+            );
+            match resolved {
                 // Navigation never touches the desktop: it just moves this session and answers
                 // with the layout the phone should now be drawing.
                 Ok(Press::Go(target)) => {
@@ -1075,6 +1237,24 @@ mod tests {
         assert_eq!(panel_action("close_foreground_app"), Some("alt+F4"));
         assert_eq!(panel_action("alt+F4"), None);
         assert_eq!(panel_action("close_foreground_app:123"), None);
+    }
+
+    #[test]
+    fn telemetry_identifies_shipped_surfaces_without_exposing_custom_names() {
+        let custom = Session {
+            manual: true,
+            deck_id: "confidential-client-deck".into(),
+            ..Default::default()
+        };
+        let launcher = Session {
+            manual: true,
+            deck_id: LAUNCHER_DECK_ID.into(),
+            ..Default::default()
+        };
+        assert_eq!(analytics_surface(&custom), "manual_custom");
+        assert_eq!(analytics_surface(&launcher), "launcher");
+        assert_eq!(safe_press("short"), "short");
+        assert_eq!(safe_press("private-value"), "other");
     }
     use crate::config::{Deck, Key, KeyKind, Page};
 

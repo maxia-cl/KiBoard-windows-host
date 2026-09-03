@@ -71,17 +71,17 @@
 
     <label>
       {t("insp.label")}
-      <input value={key.label ?? ""} oninput={(e) => set("label", e.currentTarget.value)} />
+      <input data-telemetry="editor_key_label_changed" value={key.label ?? ""} oninput={(e) => set("label", e.currentTarget.value)} />
     </label>
 
     <div class="field">
       <span>{t("insp.appearance")}</span>
       <div class="row">
-        <button class="secondary grow" onclick={() => (picking = true)}><IconGlyph name={key.icon} /> {t("insp.icon")}</button>
-        <button class="secondary grow" onclick={() => imageInput.click()}>{t("insp.image")}</button>
-        <input class="hidden-file" bind:this={imageInput} type="file" accept="image/png,image/jpeg,image/webp" onchange={(e) => pickImage(e.currentTarget.files?.[0])} />
+        <button data-telemetry="editor_icon_picker_opened" class="secondary grow" onclick={() => (picking = true)}><IconGlyph name={key.icon} /> {t("insp.icon")}</button>
+        <button data-telemetry="editor_image_picker_opened" class="secondary grow" onclick={() => imageInput.click()}>{t("insp.image")}</button>
+        <input data-telemetry="editor_key_image_changed" class="hidden-file" bind:this={imageInput} type="file" accept="image/png,image/jpeg,image/webp" onchange={(e) => pickImage(e.currentTarget.files?.[0])} />
       </div>
-      {#if key.image}<button class="text-button" onclick={() => set("image", null)}>{t("insp.backtoicon")}</button>{/if}
+      {#if key.image}<button data-telemetry="editor_key_image_removed" class="text-button" onclick={() => set("image", null)}>{t("insp.backtoicon")}</button>{/if}
     </div>
 
     <div class="field">
@@ -89,6 +89,7 @@
       <div class="palette">
         {#each palette as color}
           <button
+            data-telemetry="editor_key_color_changed"
             class:default-color={color === null}
             class:selected-color={(key.color ?? null) === color}
             style:background-color={color}
@@ -97,7 +98,7 @@
           ></button>
         {/each}
         <label class="custom-color" title={t("insp.customcolour")}>+
-          <input type="color" value={key.color ?? "#303743"} oninput={(e) => set("color", e.currentTarget.value)} />
+          <input data-telemetry="editor_key_custom_color_changed" type="color" value={key.color ?? "#303743"} oninput={(e) => set("color", e.currentTarget.value)} />
         </label>
       </div>
     </div>
@@ -107,25 +108,25 @@
       <div class="action-summary"><IconGlyph name="bolt" /> {description(key.action)}</div>
     </div>
 
-    {#if key.kind === "action"}<button class="test" onclick={() => testKey(key)}>{t("insp.test")}</button>{/if}
+    {#if key.kind === "action"}<button data-telemetry="editor_key_tested" class="test" onclick={() => testKey(key)}>{t("insp.test")}</button>{/if}
 
     {#if hasAdvanced}
       <details class="advanced">
-        <summary>{t("insp.more")}</summary>
-        <label>{t("insp.short")}<input value={key.action ?? ""} oninput={(e) => set("action", e.currentTarget.value)} /></label>
-        <label>{t("insp.long")}<input value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value || null)} /></label>
-        <label>{t("insp.double")}<input value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value || null)} /></label>
+        <summary data-telemetry="editor_advanced_toggled">{t("insp.more")}</summary>
+        <label>{t("insp.short")}<input data-telemetry="editor_short_action_changed" value={key.action ?? ""} oninput={(e) => set("action", e.currentTarget.value)} /></label>
+        <label>{t("insp.long")}<input data-telemetry="editor_long_action_changed" value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value || null)} /></label>
+        <label>{t("insp.double")}<input data-telemetry="editor_double_action_changed" value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value || null)} /></label>
         <label class="checkbox">
-          <input type="checkbox" checked={!!key.toggle} onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)} />
+          <input data-telemetry="editor_toggle_changed" type="checkbox" checked={!!key.toggle} onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)} />
           {t("insp.second")}
         </label>
         {#if key.toggle}
-          <label>{t("insp.whenon")}<input value={key.toggle.label ?? ""} oninput={(e) => setFace("label", e.currentTarget.value)} /></label>
+          <label>{t("insp.whenon")}<input data-telemetry="editor_toggle_label_changed" value={key.toggle.label ?? ""} oninput={(e) => setFace("label", e.currentTarget.value)} /></label>
         {/if}
       </details>
     {/if}
 
-    <button class="delete" onclick={() => emptyKeyAt(deckId, selection.pageId, selection.pos)}>{t("insp.delete")}</button>
+    <button data-telemetry="editor_key_deleted" class="delete" onclick={() => emptyKeyAt(deckId, selection.pageId, selection.pos)}>{t("insp.delete")}</button>
   {:else}
     <p class="hint">{t("insp.empty")}</p>
   {/if}

@@ -3,6 +3,7 @@
   import IconGlyph from "./IconGlyph.svelte";
   import { startCatalogueDrag, onDragMove, endDrag, cancelDrag } from "./dnd.svelte.js";
   import { t } from "./i18n.js";
+  import { trackInteraction } from "./telemetry.js";
 
   let { deckId } = $props();
 
@@ -32,7 +33,10 @@
     onDragMove(deckId, e.clientX, e.clientY);
   }
   function onUp(e) {
-    if (gesture?.moved) endDrag(deckId, e.ctrlKey);
+    if (gesture?.moved) {
+      trackInteraction("editor_catalogue_item_dragged");
+      endDrag(deckId, e.ctrlKey);
+    }
     else {
       cancelDrag();
       if (gesture?.item) assignToSelection(gesture.item);
@@ -52,13 +56,14 @@
 <div class="catalogue">
   <h2>{t("catalogue.add")}</h2>
   <p class="intro">{t("catalogue.hint")}</p>
-  <input placeholder={t("search")} bind:value={query} />
+  <input data-telemetry="editor_catalogue_searched" placeholder={t("search")} bind:value={query} />
   {#each filteredGroups as group (group.id)}
     <details open={group.id === "frequent" || query.trim() !== ""}>
-      <summary>{group.label}</summary>
+      <summary data-telemetry="editor_catalogue_group_toggled">{group.label}</summary>
       {#each group.items as item (item.id)}
         <div
           class="item"
+          data-telemetry="editor_catalogue_item_assigned"
           role="button"
           tabindex="0"
           onpointerdown={(e) => handlePointerDown(e, item)}
@@ -66,6 +71,7 @@
             // The keyboard path: Enter assigns to the selected key, no dragging involved.
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
+              trackInteraction("editor_catalogue_item_assigned_shortcut");
               assignToSelection(item);
             }
           }}

@@ -1,6 +1,7 @@
 <script>
   import IconGlyph from "./IconGlyph.svelte";
   import { t } from "./i18n.js";
+  import { trackInteraction } from "./telemetry.js";
 
   let { current = null, onpick, onclose } = $props();
 
@@ -9,16 +10,21 @@
     "zoom", "screenshot", "windows", "mic", "volume", "mode", "folder",
     "obs", "macro", "close", "back", "page",
   ];
+
+  function dismiss() {
+    trackInteraction("editor_icon_picker_dismissed");
+    onclose();
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onpointerdown={onclose} role="presentation">
+<div class="overlay" onpointerdown={dismiss} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="picker" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="title">{t("icons.pick")}</div>
     <div class="grid">
       {#each ICONS as icon (icon)}
-        <button class:selected={icon === current} onclick={() => onpick(icon)}>
+        <button data-telemetry="editor_key_icon_changed" class:selected={icon === current} onclick={() => onpick(icon)}>
           <IconGlyph name={icon} />
         </button>
       {/each}

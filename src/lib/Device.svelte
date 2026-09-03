@@ -20,6 +20,7 @@
   import { getDrag, startKeyDrag, onDragMove, endDrag } from "./dnd.svelte.js";
   import { AUTHORING_GRID, SCREEN } from "./model.js";
   import { t } from "./i18n.js";
+  import { trackInteraction } from "./telemetry.js";
 
   let { deckId } = $props();
 
@@ -62,6 +63,7 @@
   }
 
   function handleDblClick(key) {
+    trackInteraction(key.kind === "folder" ? "editor_page_opened" : "editor_assign_opened");
     if (key.kind === "folder" && key.target) enterPage(key.target);
     else assignTarget = key.pos;
   }
@@ -73,11 +75,13 @@
     // The rest of the keyboard path: clear and test, so a key can be managed without a mouse.
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
+      trackInteraction("editor_key_deleted_shortcut");
       emptyKeyAt(deckId, selection.pageId, selection.pos);
       return;
     }
     if (e.key === "Enter") {
       e.preventDefault();
+      trackInteraction(selected?.kind === "folder" ? "editor_page_opened_shortcut" : "editor_key_tested_shortcut");
       if (selected?.kind === "folder" && selected.target) enterPage(selected.target);
       else testKey(selected);
       return;
@@ -99,6 +103,7 @@
     if (target < base || target >= base + SCREEN) return;
     if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && Math.floor(target / cols) !== Math.floor(pos / cols)) return;
     e.preventDefault();
+    trackInteraction("editor_key_moved_shortcut");
 
     const from = { pageId: selection.pageId, pos };
     const to = { pageId: selection.pageId, pos: target };
@@ -120,7 +125,7 @@
 
     {#if !isEntryPage()}
       <div class="folder-header">
-        <button onclick={() => exitPage()}>{t("device.back")}</button>
+        <button data-telemetry="editor_page_closed" onclick={() => exitPage()}>{t("device.back")}</button>
         <span>{page?.name || t("device.page")}</span>
       </div>
     {/if}
@@ -136,6 +141,7 @@
             selected={selection.pos === key.pos}
             isDropTarget={dropTargetFor(key.pos)}
             replaceBlink={replaceBlinkFor(key.pos, key)}
+            telemetry="editor_key_selected"
             onpointerdown={(e) => handlePointerDown(e, key)}
             onselect={() => select(key.pos)}
             ondblclick={() => handleDblClick(key)}
@@ -156,6 +162,7 @@
         <div class="dots">
           {#each Array(screens) as _, i}
             <button
+              data-telemetry="editor_screen_selected"
               class="dot"
               class:active={i === selection.screen}
               data-drop-screen-dot

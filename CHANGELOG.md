@@ -27,6 +27,9 @@ have to be installed together anyway.
 
 ### Added
 
+- **Anonymous interaction analytics:** Aptabase now records every deck-key press and the principal
+  mobile, editor, settings, pairing, tray, mode, page and input interactions. Events use a stable
+  process-session id and fixed metadata only; custom names, actions and entered text are excluded.
 - **First run explains itself** (B1): with nothing paired, the pairing panel opens by itself and
   states the three steps, including the Windows network prompt that costs you mDNS if dismissed.
 - **The PC says where it is** (R1): the pairing panel and `pairing_status` show `ip:port`, so a

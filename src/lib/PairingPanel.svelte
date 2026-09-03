@@ -9,6 +9,7 @@
     setManualEnabled,
   } from "./pairing.js";
   import { t } from "./i18n.js";
+  import { trackInteraction } from "./telemetry.js";
 
   // `firstRun` is set when the editor opened this panel by itself because nothing has ever paired
   // (B1). Everything below is the same panel — what changes is that it explains the three steps
@@ -64,6 +65,11 @@
     onclose();
   }
 
+  function dismiss() {
+    trackInteraction("settings_dismissed");
+    onclose();
+  }
+
   onMount(() => {
     refresh();
     // The pending code is short-lived (120s) and set from another connection (the phone) — poll
@@ -76,12 +82,12 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onpointerdown={onclose} role="presentation">
+<div class="overlay" onpointerdown={dismiss} role="presentation">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="panel" onpointerdown={(e) => e.stopPropagation()} role="presentation">
     <div class="header">
       <span>{firstRun ? t("pair.firstrun") : t("settings.title")}</span>
-      <button class="close" onclick={onclose}>×</button>
+      <button data-telemetry="settings_closed" class="close" onclick={onclose}>×</button>
     </div>
 
     {#if firstRun}
@@ -106,7 +112,7 @@
           <strong>{t("manual.feature")}</strong>
           <small>{t("manual.featurehint")}</small>
         </span>
-        <input type="checkbox" checked={status.manualEnabled} onchange={toggleManual} />
+        <input data-telemetry="manual_feature_toggled" type="checkbox" checked={status.manualEnabled} onchange={toggleManual} />
       </label>
 
       {#if showManualIntro}
@@ -118,7 +124,7 @@
             <li>{t("manual.intro2")}</li>
             <li>{t("manual.intro3")}</li>
           </ol>
-          <button class="primary" onclick={openManualEditor}>{t("manual.introcta")}</button>
+          <button data-telemetry="manual_intro_completed" class="primary" onclick={openManualEditor}>{t("manual.introcta")}</button>
         </div>
       {/if}
 
@@ -129,7 +135,7 @@
       </div>
       <label class="row toggle">
         <span class="label">{t("pair.accept")}</span>
-        <input type="checkbox" checked={status.pairingOpen} onchange={toggleOpen} />
+        <input data-telemetry="pairing_access_toggled" type="checkbox" checked={status.pairingOpen} onchange={toggleOpen} />
       </label>
 
       <!--
@@ -175,7 +181,7 @@
               <div class="device-name">{d.name}</div>
               <div class="hint">{d.platform}</div>
             </div>
-            <button class="revoke" onclick={() => revoke(d.device_id)}>{t("pair.revoke")}</button>
+            <button data-telemetry="paired_device_revoked" class="revoke" onclick={() => revoke(d.device_id)}>{t("pair.revoke")}</button>
           </div>
         {/each}
       </div>

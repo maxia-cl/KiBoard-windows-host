@@ -34,19 +34,43 @@ pub(crate) fn now_ts() -> u64 {
 /// Anonymous analytics (Aptabase, direct HTTP API): feature events only, no PII.
 /// ponytail: our own client; the official 1.0 plugin panics on Tauri 2 ("no reactor running").
 /// No offline queue: no network = lost event, good enough for statistics.
-fn track_event(name: &'static str) {
+///
+/// The session id must remain stable for the whole process. Generating it here on every call made
+/// Aptabase count every click as a new session, which made the interaction funnel meaningless.
+#[cfg(not(test))]
+static ANALYTICS_SESSION_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+#[cfg(not(test))]
+pub(crate) fn track_event(name: &'static str, props: serde_json::Value) {
+    track_event_live(name, props);
+}
+
+#[cfg(test)]
+pub(crate) fn track_event(name: &'static str, props: serde_json::Value) {
+    let _ = (name, props);
+}
+
+#[cfg(not(test))]
+fn track_event_live(name: &'static str, props: serde_json::Value) {
     if !config().lock().unwrap().analytics {
         return;
     }
     // Aptabase sessionId format: epoch_seconds * 1e8 + an 8-digit random number (the server
     // decodes the session start from the id; any other format = "Session is too old").
-    let session_id = {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let r: u64 = rand::random::<u64>() % 100_000_000;
-        (secs * 100_000_000 + r).to_string()
+    let session_id = ANALYTICS_SESSION_ID
+        .get_or_init(|| {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let r: u64 = rand::random::<u64>() % 100_000_000;
+            (secs * 100_000_000 + r).to_string()
+        })
+        .clone();
+    let locale = match i18n::host_lang() {
+        i18n::Lang::En => "en",
+        i18n::Lang::Zh => "zh",
+        i18n::Lang::Es => "es",
     };
     tauri::async_runtime::spawn(async move {
         let body = json!({
@@ -55,13 +79,13 @@ fn track_event(name: &'static str) {
             "eventName": name,
             "systemProps": {
                 "isDebug": cfg!(debug_assertions),
-                "locale": "es",
+                "locale": locale,
                 "osName": "windows",
                 "osVersion": "",
                 "appVersion": env!("CARGO_PKG_VERSION"),
                 "sdkVersion": "kiboard-min@1",
             },
-            "props": {},
+            "props": props,
         });
         let _ = reqwest::Client::new()
             .post("https://us.aptabase.com/api/v0/event")
@@ -72,7 +96,26 @@ fn track_event(name: &'static str) {
     });
 }
 
+/// Frontend interaction names are identifiers authored in the bundled Svelte UI. Keep the bridge
+/// deliberately narrow so a modified webview cannot turn a label, filename or other user content
+/// into telemetry. All payloads stay a fixed vocabulary of lowercase identifiers.
+fn safe_ui_interaction(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
+}
+
+#[tauri::command]
+fn track_ui_interaction(interaction: String) {
+    if safe_ui_interaction(&interaction) {
+        track_event("desktop_interaction", json!({ "interaction": interaction }));
+    }
+}
+
 /// ISO-8601 UTC with no chrono dependency (Aptabase only needs seconds).
+#[cfg(not(test))]
 fn chrono_like_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -484,6 +527,10 @@ pub fn run() {
         // Single instance: if one is already running, the second launch closes and instead
         // shows/focuses the existing window. Must be registered FIRST (Tauri's recommendation).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            track_event(
+                "desktop_interaction",
+                json!({ "interaction": "app_reopened" }),
+            );
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
@@ -514,6 +561,7 @@ pub fn run() {
             auto_preview,
             host_lang,
             set_analytics,
+            track_ui_interaction,
             open_donate,
             test_action,
             pairing_status,
@@ -526,13 +574,17 @@ pub fn run() {
         // the app quits.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                track_event(
+                    "desktop_interaction",
+                    json!({ "interaction": "window_hidden" }),
+                );
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
         .setup(|app| {
             // One event per launch; client connections are already reported by the phone (paired_ok).
-            track_event("app_started");
+            track_event("app_started", json!({}));
             tauri::async_runtime::spawn(net::ws::run_ws_server());
             tauri::async_runtime::spawn(engine::layout::watch_active_app());
             // Permanent mDNS advertisement (protocol/README.md §1). "auto" until F4 adds manual
@@ -610,6 +662,10 @@ pub fn run() {
                         ..
                     } = event
                     {
+                        track_event(
+                            "desktop_interaction",
+                            json!({ "interaction": "tray_window_opened" }),
+                        );
                         if let Some(w) = tray.app_handle().get_webview_window("main") {
                             let _ = w.show();
                             let _ = w.set_focus();
@@ -618,15 +674,26 @@ pub fn run() {
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "pair" => {
+                        track_event(
+                            "desktop_interaction",
+                            json!({ "interaction": "tray_pairing_opened" }),
+                        );
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.show();
                             let _ = w.set_focus();
                         }
                     }
                     "unpair" => {
+                        track_event(
+                            "desktop_interaction",
+                            json!({ "interaction": "tray_devices_unpaired" }),
+                        );
                         let _ = unpair_all();
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        track_event("desktop_interaction", json!({ "interaction": "tray_quit" }));
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .build(app)?;
@@ -642,7 +709,9 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{editable_manual_decks, safe_file_name, with_protected_launcher};
+    use super::{
+        editable_manual_decks, safe_file_name, safe_ui_interaction, with_protected_launcher,
+    };
     use crate::config::Deck;
 
     fn deck(id: &str, name: &str) -> Deck {
@@ -686,5 +755,15 @@ mod tests {
         // An id made entirely of punctuation would otherwise produce an empty file name.
         assert_eq!(safe_file_name("///"), "deck");
         assert_eq!(safe_file_name(""), "deck");
+    }
+
+    #[test]
+    fn telemetry_accepts_identifiers_but_not_user_content() {
+        assert!(safe_ui_interaction("editor_key_selected"));
+        assert!(safe_ui_interaction("auto_page_2"));
+        assert!(!safe_ui_interaction(""));
+        assert!(!safe_ui_interaction("My private deck"));
+        assert!(!safe_ui_interaction("file:C:/Users/me/secret.txt"));
+        assert!(!safe_ui_interaction(&"a".repeat(65)));
     }
 }
