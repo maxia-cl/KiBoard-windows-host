@@ -79,6 +79,9 @@ publicar un borrador, `tool/verify-authenticode.ps1` exige una firma Authenticod
 ejecutable y en cada instalador NSIS/MSI. Un certificado autofirmado sirve sólo para desarrollo
 local y no satisface esta verificación de release.
 
+Consulta la [política pública de firma de código](CODE_SIGNING.es.md) para conocer la procedencia,
+los roles de aprobación, la privacidad y los criterios de reversión.
+
 **La versión es `2.0.1`** en `Cargo.toml` y en `tauri.conf.json`, y la app del teléfono va igual.
 `0.1.29` era donde quedó la numeración de v1 y cruzó en el port con subtree; host y teléfono
 comparten número porque con `wss://` hay que instalarlos juntos de todos modos.

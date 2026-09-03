@@ -75,6 +75,9 @@ published, `tool/verify-authenticode.ps1` requires the application executable pl
 installer to have a trusted Authenticode signature. A self-signed certificate is valid only for
 local development and does not satisfy this release check.
 
+See the public [code signing policy](CODE_SIGNING.md) for provenance, approval roles, privacy, and
+rollback requirements.
+
 **The version is `2.0.1`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
 `0.1.29` was where v1's numbering stopped and came across in the subtree port; host and phone share
 a number because `wss://` means they have to be installed together anyway.
