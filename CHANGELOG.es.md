@@ -5,11 +5,30 @@
 Cambios destacables del host de KiBoard. La app del teléfono tiene el suyo; el contrato de mensajes
 se versiona aparte en [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol).
 
-Todavía no se ha publicado nada — v2 nunca salió, así que lo de abajo son las fases de
-implementación, no tags de release. El primer release necesita además su propia clave de firma y su
-propio número de versión (ver "Publicación y actualizaciones" en el README).
+## 2.0.1 (2026-09-03) — protocolo `v0.5.0`
 
-## 2.0.0 (sin publicar) — protocolo `v0.3.0-f7`
+### Añadido
+
+- Analítica anónima y opcional de interacciones con vocabulario fijo seguro y sin contenido del
+  usuario.
+- Una vista previa del tablero automático de Windows que replica el layout Android en vivo.
+- Íconos expresivos compartidos e imágenes de aplicaciones en alta resolución.
+
+### Cambiado
+
+- El modo Manual edita sólo tableros personalizados de KiBoard; el Launcher generado sigue siendo
+  automático.
+- Launcher conserva las apps visuales usadas durante los últimos 30 días y ordena primero las más
+  recientes.
+- Elegir o abrir una app desde Launcher vuelve directamente a su tablero automático.
+- La configuración Manual queda limitada a las acciones que ocupan usuarios comunes.
+
+### Corregido
+
+- Una instalación de release ya no puede arrancar un binario que apunte al servidor de desarrollo.
+- El manifiesto del actualizador usa la preferencia NSIS compatible de Tauri.
+
+## 2.0.0 (2026-09-02) — protocolo `v0.3.0-f7`
 
 El primer número de versión de KiBoard 2. `0.1.29` era donde quedó la numeración de v1 y cruzó en el
 port con subtree; el host y la app del teléfono comparten `2.0.0` porque con `wss://` hay que
@@ -27,10 +46,6 @@ instalarlos juntos de todos modos.
 
 ### Añadido
 
-- **Analítica anónima de interacciones:** Aptabase ahora registra cada pulsación del tablero y las
-  principales interacciones del teléfono, editor, configuración, emparejamiento, bandeja, modos,
-  páginas y entradas. Los eventos usan una sesión estable por ejecución y metadatos fijos; se
-  excluyen nombres, acciones personalizadas y texto ingresado.
 - **El primer arranque se explica solo** (B1): sin nada emparejado, el panel de emparejamiento se
   abre por su cuenta y dice los tres pasos, incluido el diálogo de red de Windows que te deja sin
   mDNS si lo cierras.
@@ -42,9 +57,6 @@ instalarlos juntos de todos modos.
   Elgato).
 - El catálogo de apps vía `Get-StartApps`, un deck **Launcher** generado, y `launch:` / `focus:` /
   `kill:`.
-- El Launcher generado ahora conserva solo las apps usadas durante los últimos 30 días móviles y
-  las ordena por uso más reciente. KiBoard guarda localmente la actividad en primer plano para que
-  el orden mejore desde el primer arranque, sin tocar Launchers personalizados o eliminados.
 - El editor sobre datos reales, con vista previa en vivo al teléfono de decks todavía sin guardar.
 
 ### Arreglado

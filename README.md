@@ -32,7 +32,7 @@ Signed builds and their update feed are published in this repository's Releases 
 ## Status
 
 **FP through F6 done, F7 part-way.** `KiBoard-protocol` is pinned as a git submodule at
-`KiBoard-protocol/`, tag `v0.3.0-f7`; `npm run dev`/`build` regenerate `src/tokens.g.css` from it
+`KiBoard-protocol/`, tag `v0.5.0`; `npm run dev`/`build` regenerate `src/tokens.g.css` from it
 automatically.
 
 - **F0/F1** — the v1 host was ported from `ricardomendezv/Kiboard` with a `git subtree split` (full
@@ -70,7 +70,12 @@ It refuses to publish if `TAURI_SIGNING_PRIVATE_KEY` is missing. Run
 `tool/setup-windows-updater-signing.ps1` only once on the release machine and back up both the key
 and password outside Git.
 
-**The version is `2.0.0`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
+Updater signing and Windows publisher signing are separate controls. Before a draft can be
+published, `tool/verify-authenticode.ps1` requires the application executable plus every NSIS/MSI
+installer to have a trusted Authenticode signature. A self-signed certificate is valid only for
+local development and does not satisfy this release check.
+
+**The version is `2.0.1`** in both `Cargo.toml` and `tauri.conf.json`, and the phone app matches.
 `0.1.29` was where v1's numbering stopped and came across in the subtree port; host and phone share
 a number because `wss://` means they have to be installed together anyway.
 

@@ -5,11 +5,27 @@
 Notable changes to the KiBoard host. The phone app has its own; the message contract is versioned
 separately in [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol).
 
-Nothing here has been released yet — v2 has never been published, so the versions below are the
-implementation phases, not release tags. The first release also needs its own signing key and its
-own version number (see "Releases and updates" in the README).
+## 2.0.1 (2026-09-03) — protocol `v0.5.0`
 
-## 2.0.0 (unreleased) — protocol `v0.3.0-f7`
+### Added
+
+- Anonymous, optional interaction analytics with a fixed safe vocabulary and no user content.
+- A Windows automatic-deck preview that mirrors the live Android layout.
+- Shared expressive deck icons and high-resolution application artwork.
+
+### Changed
+
+- Manual mode edits only custom KiBoard decks; the generated Launcher remains automatic.
+- Launcher keeps visual apps used in the last 30 days and orders the most recent first.
+- Choosing or opening an app from Launcher returns directly to that app's automatic deck.
+- Manual configuration is reduced to the actions common users actually need.
+
+### Fixed
+
+- Release installs can no longer start a development-server binary.
+- The updater manifest uses Tauri's supported NSIS preference.
+
+## 2.0.0 (2026-09-02) — protocol `v0.3.0-f7`
 
 The first version number of KiBoard 2. `0.1.29` was where v1's numbering stopped and it came
 across in the subtree port; the host and the phone app share `2.0.0` because `wss://` means they
@@ -27,9 +43,6 @@ have to be installed together anyway.
 
 ### Added
 
-- **Anonymous interaction analytics:** Aptabase now records every deck-key press and the principal
-  mobile, editor, settings, pairing, tray, mode, page and input interactions. Events use a stable
-  process-session id and fixed metadata only; custom names, actions and entered text are excluded.
 - **First run explains itself** (B1): with nothing paired, the pairing panel opens by itself and
   states the three steps, including the Windows network prompt that costs you mDNS if dismissed.
 - **The PC says where it is** (R1): the pairing panel and `pairing_status` show `ip:port`, so a
@@ -39,9 +52,6 @@ have to be installed together anyway.
 - Two-state keys, action chains, custom images and share-by-file (Elgato parity).
 - The app catalogue from `Get-StartApps`, a generated **Launcher** deck, and `launch:` / `focus:` /
   `kill:`.
-- The generated Launcher now keeps only apps used in the rolling last 30 days and orders them by
-  most recent use. KiBoard persists foreground activity locally so the order keeps improving after
-  the first run, while custom or deleted Launcher decks remain untouched.
 - The editor on real data, with live preview to the phone of decks that are not saved yet.
 
 ### Fixed

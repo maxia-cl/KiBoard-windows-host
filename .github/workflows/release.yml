@@ -54,3 +54,10 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      # Tauri updater signatures protect updates after installation, but they are not Windows
+      # Authenticode. Keep the GitHub release as a draft and fail unless Windows trusts the
+      # publisher signature on the app and every installer.
+      - name: Verify trusted Authenticode signatures
+        shell: pwsh
+        run: ./tool/verify-authenticode.ps1

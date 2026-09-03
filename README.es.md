@@ -33,7 +33,7 @@ Las compilaciones firmadas y su feed de actualización se publican en Releases d
 ## Estado
 
 **FP hasta F6 listas, F7 a medias.** `KiBoard-protocol` está fijado como submódulo de git en
-`KiBoard-protocol/`, tag `v0.3.0-f7`; `npm run dev`/`build` regeneran `src/tokens.g.css` desde ahí
+`KiBoard-protocol/`, tag `v0.5.0`; `npm run dev`/`build` regeneran `src/tokens.g.css` desde ahí
 automáticamente.
 
 - **F0/F1** — el host de v1 se portó desde `ricardomendezv/Kiboard` con un `git subtree split`
@@ -74,7 +74,12 @@ revisión. Se niega a publicar si falta `TAURI_SIGNING_PRIVATE_KEY`. El script
 `tool/setup-windows-updater-signing.ps1` se ejecuta sólo una vez en la máquina de publicación y la
 clave con su contraseña deben respaldarse fuera de Git.
 
-**La versión es `2.0.0`** en `Cargo.toml` y en `tauri.conf.json`, y la app del teléfono va igual.
+La firma del actualizador y la firma de editor de Windows son controles distintos. Antes de
+publicar un borrador, `tool/verify-authenticode.ps1` exige una firma Authenticode confiable en el
+ejecutable y en cada instalador NSIS/MSI. Un certificado autofirmado sirve sólo para desarrollo
+local y no satisface esta verificación de release.
+
+**La versión es `2.0.1`** en `Cargo.toml` y en `tauri.conf.json`, y la app del teléfono va igual.
 `0.1.29` era donde quedó la numeración de v1 y cruzó en el port con subtree; host y teléfono
 comparten número porque con `wss://` hay que instalarlos juntos de todos modos.
 
