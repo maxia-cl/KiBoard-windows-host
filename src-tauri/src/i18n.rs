@@ -126,6 +126,7 @@ static TABLE: &[(&str, &str, &str)] = &[
     ("Archivos", "Files", "文件"),
     ("Asignar", "Assign", "分配"),
     ("Asignarme", "Assign me", "分给我"),
+    ("Atajos Gmail", "Gmail shortcuts", "Gmail 快捷键"),
     ("Atrás", "Back", "后退"),
     ("Audio", "Audio", "音频"),
     ("Autosuma", "AutoSum", "自动求和"),

@@ -435,6 +435,16 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
             "gmail",
             &["gmail"],
             vec![
+                // Gmail ships its single-letter shortcuts disabled. Keep setup inside the deck so
+                // the user can enable them without hunting through Settings. `?` opens Gmail's
+                // own shortcut dialog even while they are disabled; its first Tab target is the
+                // Enable/Disable link. The picker makes the state-changing choice explicit, so an
+                // account that already has shortcuts enabled is never toggled accidentally.
+                b(
+                    "Atajos Gmail",
+                    "settings",
+                    "picker:Activar atajos=shift+slash>>tab>>enter;Ver estado=shift+slash",
+                ),
                 b("Redactar", "new", "c"),
                 b("Buscar", "find", "/"),
                 b("Responder", "reply", "r"),
@@ -2144,7 +2154,7 @@ pub(crate) fn refresh_launcher() {
 
 /// Version of the built-in profiles. Bump it when `default_profiles` changes so already-installed
 /// hosts refresh them (keeping the token and pairing).
-const PROFILES_VERSION: u32 = 48;
+const PROFILES_VERSION: u32 = 49;
 
 /// Shape of `config.json`. Bumped when the model changes in a way `#[serde(default)]` cannot
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
@@ -2536,6 +2546,31 @@ mod tests {
         let mut decks = starter(vec![key_at(0, "ctrl+c"), key_at(7, "ctrl+v")]);
         backfill_launcher(&mut decks, launcher());
         assert_eq!(decks[0].pages[0].keys.last().unwrap().pos, 8);
+    }
+
+    #[test]
+    fn gmail_wins_over_chrome_and_explains_its_required_shortcuts() {
+        let profiles = default_profiles();
+        assert_eq!(
+            profile_for(
+                &profiles,
+                "chrome",
+                "Inbox - user@gmail.com - Gmail - Google Chrome"
+            ),
+            "gmail"
+        );
+
+        let gmail = profiles.iter().find(|p| p.id == "gmail").unwrap();
+        let setup = gmail
+            .buttons
+            .iter()
+            .find(|button| button.label == "Atajos Gmail")
+            .expect("Gmail's letter shortcuts ship disabled and need an in-deck setup path");
+        assert!(setup.recommended, "setup must be visible on the first page");
+        assert_eq!(
+            setup.action,
+            "picker:Activar atajos=shift+slash>>tab>>enter;Ver estado=shift+slash"
+        );
     }
 
     #[test]
