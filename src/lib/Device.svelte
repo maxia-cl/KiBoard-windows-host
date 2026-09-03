@@ -1,5 +1,6 @@
 <script>
   import Key from "./Key.svelte";
+  import IconGlyph from "./IconGlyph.svelte";
   import AssignPopover from "./AssignPopover.svelte";
   import {
     getDecks,
@@ -10,10 +11,6 @@
     isEntryPage,
     select,
     testKey,
-    canUndo,
-    canRedo,
-    undo,
-    redo,
     currentScreen,
     screenCount,
     moveKey,
@@ -144,6 +141,13 @@
             ondblclick={() => handleDblClick(key)}
           />
         {/each}
+        <div class="foreground-panel" aria-label={t("device.foreground")}>
+          <div class="foreground-identity">
+            <IconGlyph name="windows" />
+            <span>{t("device.foreground")}</span>
+          </div>
+          <IconGlyph name="close" color="var(--deck-color-key-danger-background)" />
+        </div>
       </div>
 
       <!-- The same dots the phone draws, meaning the same thing: this page cut into screens.
@@ -166,10 +170,6 @@
       <div class="logo">KiBoard</div>
     </div>
 
-    <div class="page-controls">
-      <button disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
-      <button disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
-    </div>
   </div>
 
   {#if assignTarget !== null}
@@ -220,7 +220,36 @@
   }
   .grid {
     display: grid;
+    grid-template-rows: repeat(3, var(--deck-key-size));
     gap: calc(var(--deck-key-size) * var(--deck-key-gap-ratio));
+  }
+  .foreground-panel {
+    grid-column: 3 / span 3;
+    grid-row: 3;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 calc(var(--deck-key-size) * 0.14);
+    border-radius: var(--deck-key-corner-radius);
+    border: 1px solid rgb(255 255 255 / 8%);
+    background: rgb(0 0 0 / 20%);
+    color: var(--deck-color-text-primary);
+  }
+  .foreground-panel > :global(.icon-glyph) {
+    flex: 0 0 auto;
+    font-size: calc(var(--deck-key-size) * 0.3);
+  }
+  .foreground-identity {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: calc(var(--deck-key-size) * 0.14);
+  }
+  .foreground-identity :global(.icon-glyph) {
+    font-size: calc(var(--deck-key-size) * 0.36);
   }
   .dots {
     display: flex;
@@ -247,9 +276,5 @@
     letter-spacing: 0.14em;
     color: var(--deck-color-text-secondary);
     text-transform: uppercase;
-  }
-  .page-controls {
-    display: flex;
-    gap: 8px;
   }
 </style>

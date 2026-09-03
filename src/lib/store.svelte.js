@@ -12,6 +12,7 @@ import {
   saveDecks,
   loadAppCatalogue,
   loadObsScenes,
+  loadObsInfo,
   testAction,
   previewDecks,
   clearPreview,
@@ -27,80 +28,97 @@ let saveError = $state(null);
 
 let selection = $state({ deckId: null, pageId: null, screen: 0, pos: null });
 let toast = $state(null);
-let historyStack = [];
-let redoStack = [];
+let historyStack = $state([]);
+let redoStack = $state([]);
 
 // --- loading -------------------------------------------------------------
 
 export async function init() {
-  const [realDecks, apps, scenes] = await Promise.all([
+  const [realDecks, apps, scenes, obs] = await Promise.all([
     loadDecks(),
     loadAppCatalogue(),
     loadObsScenes().catch(() => []), // OBS not running is normal, not an error
+    loadObsInfo().catch(() => ({ running: false, connected: false })),
   ]);
   decks = realDecks;
-  catalogue = buildCatalogue(apps, scenes);
+  catalogue = buildCatalogue(apps, scenes, obs);
   const first = decks[0];
   selection = { deckId: first?.id ?? null, pageId: first?.pages[0]?.id ?? null, screen: 0, pos: null };
   loaded = true;
 }
 
-function buildCatalogue(apps, scenes) {
-  return {
-    groups: [
-      {
-        id: "apps",
-        // Only the GROUP headings are translated. An item's label is written into the deck when a
-        // key is made from it and then travels to every phone, where `i18n::tr` translates it from
-        // Spanish — storing this window's language in the file would break that for every other
-        // phone. ponytail: those labels should be the Spanish `tr` expects; today they are English
-        // and simply pass through untranslated, same as before this file had an i18n layer.
-        label: t("cat.apps"),
-        items: apps.map((app) => ({
-          type: "app",
-          id: app.id,
-          label: app.name,
-          icon: "app",
-          image: app.image ?? undefined,
-          action: `launch:${app.id}`,
-          // Long press focuses without launching — Elgato's "Key Logic" shape (protocol §3).
-          hold: `focus:${app.id}`,
+function buildCatalogue(apps, scenes, obs) {
+  const groups = [
+    {
+      id: "frequent",
+      label: t("cat.frequent"),
+      items: [
+        { type: "common", id: "copy", label: "Copiar", icon: "copy", action: "ctrl+c" },
+        { type: "common", id: "paste", label: "Pegar", icon: "paste", action: "ctrl+v" },
+        { type: "common", id: "cut", label: "Cortar", icon: "cut", action: "ctrl+x" },
+        { type: "common", id: "undo", label: "Deshacer", icon: "undo", action: "ctrl+z" },
+        { type: "common", id: "redo", label: "Rehacer", icon: "redo", action: "ctrl+y" },
+        { type: "common", id: "select-all", label: "Sel. todo", icon: "selectall", action: "ctrl+a" },
+      ],
+    },
+    {
+      id: "tools",
+      label: t("cat.tools"),
+      items: [
+        { type: "system", id: "screenshot", label: "Captura", icon: "screenshot", action: "screenshot" },
+        { type: "system", id: "trackpad", label: "Trackpad", icon: "mouse", action: "trackpad" },
+        { type: "system", id: "dictate", label: "Dictar", icon: "mic", action: "dictate" },
+      ],
+    },
+  ];
+
+  if (apps.length) {
+    groups.push({
+      id: "apps",
+      label: t("cat.recentapps"),
+      items: apps.map((app) => ({
+        type: "app",
+        id: app.id,
+        label: app.name,
+        icon: "app",
+        image: app.image ?? undefined,
+        // `launch:` already focuses a running instance, so common users need no hidden hold rule.
+        action: `launch:${app.id}`,
+      })),
+    });
+  }
+
+  if (obs?.running || obs?.connected) {
+    groups.push({
+      id: "obs",
+      label: t("cat.obs"),
+      items: [
+        {
+          type: "obs", id: "record", label: "Grabar", icon: "record", action: "obs:record",
+          toggle: { label: "Detener grab.", icon: "record", color: "#7A2733" },
+        },
+        {
+          type: "obs", id: "stream", label: "Directo", icon: "stream", action: "obs:stream", danger: true,
+          toggle: { label: "Cortar directo", icon: "stream", color: "#7A2733" },
+        },
+        {
+          type: "obs", id: "mic", label: "Mic", icon: "mic", action: "obs:mic",
+          toggle: { label: "Activar mic", icon: "mic", color: "#315C4A" },
+        },
+        ...scenes.map((name) => ({
+          type: "obs",
+          id: `scene-${name}`,
+          label: name,
+          icon: "obs",
+          action: `obs:scene:${name}`,
+          toggle: { label: name, icon: "obs", color: "#315C4A" },
         })),
-      },
-      {
-        id: "system",
-        label: t("cat.system"),
-        items: [
-          { type: "system", id: "windows", label: "Windows", icon: "windows", action: "windows" },
-          { type: "system", id: "trackpad", label: "Trackpad", icon: "mouse", action: "trackpad" },
-          { type: "system", id: "dictate", label: "Dictate", icon: "mic", action: "dictate" },
-          { type: "system", id: "screenshot", label: "Screenshot", icon: "screenshot", action: "screenshot" },
-          { type: "system", id: "mode-auto", label: "Auto", icon: "mode", action: "mode:auto" },
-        ],
-      },
-      {
-        id: "obs",
-        label: t("cat.obs"),
-        items: [
-          { type: "obs", id: "record", label: "Record", icon: "obs", action: "obs:record" },
-          { type: "obs", id: "stream", label: "Stream", icon: "obs", action: "obs:stream" },
-          { type: "obs", id: "mic", label: "Mic", icon: "mic", action: "obs:mic" },
-          // The user's OWN scenes, live from the running instance — no hardcoded samples.
-          ...scenes.map((name) => ({
-            type: "obs",
-            id: `scene-${name}`,
-            label: name,
-            icon: "obs",
-            action: `obs:scene:${name}`,
-          })),
-        ],
-      },
-      {
-        id: "pages",
-        label: t("cat.pages"),
-        items: [{ type: "page-template", id: "new-page", label: "New page", icon: "folder" }],
-      },
-    ],
+      ],
+    });
+  }
+
+  return {
+    groups,
   };
 }
 
@@ -302,8 +320,59 @@ function keyFromCatalogueItem(item, pos) {
     image: item.image,
     action: item.action,
     hold: item.hold,
+    double: item.double,
+    toggle: item.toggle,
+    danger: item.danger,
     kind: "action",
   };
+}
+
+const simpleKeys = () => [
+  ["Copiar", "copy", "ctrl+c"],
+  ["Pegar", "paste", "ctrl+v"],
+  ["Cortar", "cut", "ctrl+x"],
+  ["Deshacer", "undo", "ctrl+z"],
+  ["Rehacer", "redo", "ctrl+y"],
+  ["Sel. todo", "selectall", "ctrl+a"],
+  ["Captura", "screenshot", "screenshot"],
+  ["Trackpad", "mouse", "trackpad"],
+  ["Dictar", "mic", "dictate"],
+].map(([label, icon, action], pos) => ({ pos, label, icon, action, kind: "action" }));
+
+/** Replaces only the selected Manual deck; Launcher and every other deck remain untouched. */
+export function resetDeckToSimple(deckId) {
+  const deck = findDeck(deckId);
+  if (!deck) return;
+  const pageId = deck.pages[0]?.id ?? `p${crypto.randomUUID().slice(0, 8)}`;
+  withHistory(() => {
+    deck.pages = [{ id: pageId, name: "", keys: simpleKeys() }];
+  });
+  selection = { deckId, pageId, screen: 0, pos: null };
+  showToast(t("toast.simplified"));
+}
+
+/** Adds a linked page from the page currently on show, then opens it for editing. */
+export function addPage(deckId) {
+  const deck = findDeck(deckId);
+  const scope = resolveScope(deckId, selection.pageId);
+  if (!deck || !scope) return;
+  const number = deck.pages.length + 1;
+  const pageId = `p${crypto.randomUUID().slice(0, 8)}`;
+  const taken = new Set(scope.keys.map((key) => key.pos));
+  let pos = 0;
+  while (taken.has(pos)) pos += 1;
+  withHistory(() => {
+    upsertKey(scope, pos, {
+      pos,
+      label: `Página ${number}`,
+      icon: "folder",
+      kind: "folder",
+      target: pageId,
+    });
+    deck.pages.push({ id: pageId, name: `Página ${number}`, keys: [] });
+  });
+  selection = { deckId, pageId, screen: 0, pos: null };
+  showToast(t("toast.pageadded", number));
 }
 
 export function dropCatalogueItem(deckId, pageId, pos, item) {

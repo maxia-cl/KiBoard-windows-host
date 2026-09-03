@@ -1953,96 +1953,46 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
 /// Keys per page in the decks shipped by default. Decks are authored against the reference 5×3
 /// device; the host repaginates to whatever grid the client declares in `hello`, so this number is
 /// an authoring convention, not a constraint on the client.
+#[cfg(test)]
 const REFERENCE_PAGE: usize = 15;
 
-/// v1 had no manual mode, so there is nothing to carry over — but landing in manual mode with an
-/// empty grid looks broken. This seeds one starter deck from the generic profile's recommended
-/// buttons, spread over two pages, plus the v2-only keys (window switcher, mode switch) that had
-/// no equivalent in v1. F4 replaces it with a deck built from the machine's most-used apps.
+/// A small Manual starter: only actions a non-technical user can recognize immediately.
+/// Navigation to Auto, Launcher and the window switcher lives permanently in the phone shell, so
+/// repeating it as editable keys teaches the wrong mental model and wastes scarce cells.
 pub(crate) fn default_decks() -> Vec<Deck> {
-    let generic = default_profiles().into_iter().find(|p| p.id == "generic");
-    let mut keys: Vec<Key> = generic
-        .map(|p| p.buttons)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|b| b.recommended)
-        .map(|b| Key {
-            label: b.label,
-            icon: b.icon,
-            action: Some(b.action),
-            danger: b.danger,
-            kind: KeyKind::Action,
-            ..Default::default()
-        })
-        .collect();
-    // v2-only keys: they have no v1 button to migrate from.
-    keys.push(Key {
-        label: "Ventanas".into(),
-        icon: "windows".into(),
-        action: Some("windows".into()),
+    let keys = [
+        ("Copiar", "copy", "ctrl+c"),
+        ("Pegar", "paste", "ctrl+v"),
+        ("Cortar", "cut", "ctrl+x"),
+        ("Deshacer", "undo", "ctrl+z"),
+        ("Rehacer", "redo", "ctrl+y"),
+        ("Sel. todo", "selectall", "ctrl+a"),
+        ("Captura", "screenshot", "screenshot"),
+        ("Trackpad", "mouse", "trackpad"),
+        ("Dictar", "mic", "dictate"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(pos, (label, icon, action))| Key {
+        pos,
+        label: label.into(),
+        icon: icon.into(),
+        action: Some(action.into()),
         kind: KeyKind::Action,
         ..Default::default()
-    });
-    // The trackpad and dictation are §4.2.1 client-side screens. They were loose UI in v1; in v2
-    // everything is a key, so this is the only way to reach them.
-    keys.push(Key {
-        label: "Trackpad".into(),
-        icon: "mouse".into(),
-        action: Some("trackpad".into()),
-        kind: KeyKind::Action,
-        ..Default::default()
-    });
-    keys.push(Key {
-        label: "Dictar".into(),
-        icon: "mic".into(),
-        action: Some("dictate".into()),
-        kind: KeyKind::Action,
-        ..Default::default()
-    });
-    keys.push(Key {
-        label: "Auto".into(),
-        icon: "mode".into(),
-        action: Some("mode:auto".into()),
-        kind: KeyKind::Action,
-        ..Default::default()
-    });
-    // Only offer the jump if the machine actually produced a Launcher — a key that answers
-    // no_such_key is worse than no key.
-    let launcher = launcher_deck();
-    if launcher.is_some() {
-        keys.push(Key {
-            label: "Launcher".into(),
-            icon: "apps".into(),
-            action: Some("deck:launcher".into()),
-            kind: KeyKind::Action,
-            ..Default::default()
-        });
-    }
+    })
+    .collect();
 
-    let mut pages: Vec<Page> = keys
-        .chunks(REFERENCE_PAGE)
-        .enumerate()
-        .map(|(i, chunk)| Page {
-            id: format!("p{i}"),
-            name: String::new(),
-            keys: chunk
-                .iter()
-                .enumerate()
-                .map(|(pos, k)| Key { pos, ..k.clone() })
-                .collect(),
-        })
-        .collect();
-    if pages.is_empty() {
-        pages.push(Page {
-            id: "p0".into(),
-            ..Default::default()
-        });
-    }
+    let launcher = launcher_deck();
     let mut decks = vec![Deck {
         id: "starter".into(),
         name: "KiBoard".into(),
         icon: "deck".into(),
-        pages,
+        pages: vec![Page {
+            id: "p0".into(),
+            name: String::new(),
+            keys,
+        }],
     }];
     decks.extend(launcher);
     decks
@@ -2791,6 +2741,36 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn starter_manual_deck_contains_only_common_actions() {
+        let starter = default_decks()
+            .into_iter()
+            .find(|deck| deck.id == "starter")
+            .expect("the Manual starter deck");
+        let actions: Vec<&str> = starter.pages[0]
+            .keys
+            .iter()
+            .filter_map(|key| key.action.as_deref())
+            .collect();
+        assert_eq!(actions.len(), 9);
+        for common in [
+            "ctrl+c",
+            "ctrl+v",
+            "ctrl+x",
+            "ctrl+z",
+            "ctrl+y",
+            "ctrl+a",
+            "screenshot",
+            "trackpad",
+            "dictate",
+        ] {
+            assert!(actions.contains(&common), "starter is missing {common}");
+        }
+        for redundant in ["windows", "mode:auto", "deck:launcher"] {
+            assert!(!actions.contains(&redundant));
         }
     }
 

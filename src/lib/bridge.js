@@ -19,6 +19,22 @@ export function isTauri() {
 }
 
 export async function loadDecks() {
+  if (!isTauri()) {
+    const rows = [
+      ["Copiar", "copy", "ctrl+c"], ["Pegar", "paste", "ctrl+v"],
+      ["Cortar", "cut", "ctrl+x"], ["Deshacer", "undo", "ctrl+z"],
+      ["Rehacer", "redo", "ctrl+y"], ["Sel. todo", "selectall", "ctrl+a"],
+      ["Captura", "screenshot", "screenshot"], ["Trackpad", "mouse", "trackpad"],
+      ["Dictar", "mic", "dictate"],
+    ];
+    return [{
+      id: "starter", name: "KiBoard", icon: "deck",
+      pages: [{
+        id: "p0", name: "",
+        keys: rows.map(([label, icon, action], pos) => ({ pos, label, icon, action, kind: "action" })),
+      }],
+    }];
+  }
   return await invoke("get_decks");
 }
 
@@ -29,21 +45,31 @@ export async function loadAutoPreview(page = 0) {
 
 /** Resolves to `{ ok }` or `{ ok: false, error }` — the host validates before it writes. */
 export async function saveDecks(decks) {
+  if (!isTauri()) return { ok: true };
   return await invoke("save_decks", { decks });
 }
 
 /** Shows UNSAVED decks on every phone in manual mode. Validated host-side, same as a save. */
 export async function previewDecks(decks) {
+  if (!isTauri()) return { ok: true };
   return await invoke("preview_decks", { decks });
 }
 
 /** Drops the preview: the phones go back to what is on disk. */
 export async function clearPreview() {
+  if (!isTauri()) return;
   return await invoke("clear_preview");
 }
 
 /** The machine's installed apps (F4), each with its real icon already as a `data:` URI. */
 export async function loadAppCatalogue() {
+  if (!isTauri()) {
+    return [
+      { id: "Google.Chrome", name: "Google Chrome" },
+      { id: "OpenAI.Codex", name: "Codex" },
+      { id: "Microsoft.WindowsNotepad", name: "Bloc de notas" },
+    ];
+  }
   return await invoke("app_catalogue");
 }
 
@@ -54,7 +80,14 @@ export async function testAction(action) {
 
 /** Live OBS scenes, so the catalogue offers the user's own instead of two hardcoded samples. */
 export async function loadObsScenes() {
+  if (!isTauri()) return [];
   return await invoke("obs_scenes");
+}
+
+/** Whether OBS is available right now; keeps an irrelevant integration out of Manual. */
+export async function loadObsInfo() {
+  if (!isTauri()) return { running: false, connected: false };
+  return await invoke("obs_info");
 }
 
 /**

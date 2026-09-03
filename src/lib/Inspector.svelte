@@ -1,75 +1,72 @@
 <script>
-  import { getSelection, updateKeyFields, testKey, resolveScope } from "./store.svelte.js";
+  import { getSelection, updateKeyFields, testKey, resolveScope, emptyKeyAt } from "./store.svelte.js";
   import IconGlyph from "./IconGlyph.svelte";
   import IconPicker from "./IconPicker.svelte";
   import { t } from "./i18n.js";
 
   let { deckId } = $props();
-
   let selection = $derived(getSelection());
   let scope = $derived(selection.pos != null ? resolveScope(deckId, selection.pageId) : null);
-  // `pos` is the key's ABSOLUTE address in the page, not an index into a dense screen array.
-  let key = $derived(scope?.keys.find((k) => k.pos === selection.pos) ?? null);
-  // Which icon field the picker is filling: the key's own, or the ON face's.
-  let picking = $state(null);
+  let key = $derived(scope?.keys.find((candidate) => candidate.pos === selection.pos) ?? null);
+  let picking = $state(false);
+  let imageInput = $state();
+
+  const palette = [null, "#303743", "#394B63", "#315C4A", "#654C33", "#5A3F68", "#7A2733"];
 
   function set(field, value) {
     updateKeyFields(deckId, selection.pageId, selection.pos, { [field]: value });
   }
 
-  /** Edits one field of the ON face without disturbing the rest of it (protocol §3). */
   function setFace(field, value) {
     set("toggle", { ...(key.toggle ?? {}), [field]: value });
   }
 
-  // --- multi-action (F6) ---------------------------------------------------
-  // The v1 DSL chains steps with ">>" and has since v1; what F6 adds is a way to write one
-  // without typing the separator. Purely a view over the same string — the stored action stays
-  // exactly what `run_action` has always parsed, so nothing downstream learns a new shape.
-  const steps = (action) => (action ?? "").split(">>").map((s) => s.trim());
-  const joined = (list) => list.filter((s) => s !== "").join(" >> ");
-
-  function setStep(action, i, value) {
-    const list = steps(action);
-    list[i] = value;
-    return joined(list);
+  function description(value) {
+    if (key?.kind === "folder") return t("insp.action.page");
+    if (value?.startsWith("launch:")) return t("insp.action.launch", key.label);
+    const known = {
+      "ctrl+c": "copy", "ctrl+v": "paste", "ctrl+x": "cut", "ctrl+z": "undo",
+      "ctrl+y": "redo", "ctrl+a": "selectall", screenshot: "screenshot",
+      trackpad: "trackpad", dictate: "dictate", "obs:record": "record",
+      "obs:stream": "stream", "obs:mic": "mic",
+    };
+    if (value?.startsWith("obs:scene:")) return t("insp.action.scene", value.slice(10));
+    return known[value] ? t(`insp.action.${known[value]}`) : t("insp.action.advanced");
   }
 
-  /**
-   * A custom image, downscaled to the key's own size before it is stored.
-   *
-   * The whole `layout` frame is capped at 64 KB (protocol §4), and this data: URI is stored in the
-   * deck and re-sent on every push — a 2 MB photo dropped on three keys would make the page
-   * unsendable. 96 px is twice the drawn key on a phone at 3x, and lands around 4 KB.
-   */
-  async function pickImage(file, apply) {
+  let managedToggle = $derived(key?.action?.startsWith("obs:") === true);
+  let hasAdvanced = $derived(
+    key?.kind === "action" &&
+      (!!key.hold || !!key.double || key.action?.includes(">>") || (!!key.toggle && !managedToggle)),
+  );
+
+  async function pickImage(file) {
     if (!file) return;
-    const SIZE = 96;
+    const size = 96;
     try {
       const bitmap = await createImageBitmap(file);
       const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = SIZE;
+      canvas.width = canvas.height = size;
       const ctx = canvas.getContext("2d");
-      const scale = Math.min(SIZE / bitmap.width, SIZE / bitmap.height);
-      const w = bitmap.width * scale;
-      const h = bitmap.height * scale;
-      ctx.drawImage(bitmap, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
-      apply(canvas.toDataURL("image/png"));
+      const scale = Math.min(size / bitmap.width, size / bitmap.height);
+      const width = bitmap.width * scale;
+      const height = bitmap.height * scale;
+      ctx.drawImage(bitmap, (size - width) / 2, (size - height) / 2, width, height);
+      set("image", canvas.toDataURL("image/png"));
     } catch {
-      // A file the browser cannot decode (a renamed .txt, a broken PNG) is not worth a dialog.
-      apply(null);
+      set("image", null);
+    } finally {
+      if (imageInput) imageInput.value = "";
     }
   }
 </script>
 
-<div class="inspector">
+<aside class="inspector">
+  <h2>{t("insp.title")}</h2>
   {#if key && key.kind !== "empty"}
     <div class="preview-key" style:background-color={key.color ?? null}>
-      {#if key.image}
-        <img src={key.image} alt="" />
-      {:else}
-        <span class="glyph"><IconGlyph name={key.icon} color={key.iconColor} /></span>
-      {/if}
+      {#if key.image}<img src={key.image} alt="" />
+      {:else}<span class="glyph"><IconGlyph name={key.icon} color={key.iconColor} /></span>{/if}
     </div>
 
     <label>
@@ -77,223 +74,97 @@
       <input value={key.label ?? ""} oninput={(e) => set("label", e.currentTarget.value)} />
     </label>
 
-    <label>
-      {t("insp.icon")}
-      <button class="icon-btn" onclick={() => (picking = "icon")}>
-        <IconGlyph name={key.icon} /> {t("insp.change")}
-      </button>
-    </label>
-
-    <label>
-      {t("insp.image")}
+    <div class="field">
+      <span>{t("insp.appearance")}</span>
       <div class="row">
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onchange={(e) => pickImage(e.currentTarget.files?.[0], (img) => set("image", img))}
-        />
-        {#if key.image}
-          <button class="icon-btn" onclick={() => set("image", null)} title={t("insp.backtoicon")}>×</button>
-        {/if}
+        <button class="secondary grow" onclick={() => (picking = true)}><IconGlyph name={key.icon} /> {t("insp.icon")}</button>
+        <button class="secondary grow" onclick={() => imageInput.click()}>{t("insp.image")}</button>
+        <input class="hidden-file" bind:this={imageInput} type="file" accept="image/png,image/jpeg,image/webp" onchange={(e) => pickImage(e.currentTarget.files?.[0])} />
       </div>
-    </label>
+      {#if key.image}<button class="text-button" onclick={() => set("image", null)}>{t("insp.backtoicon")}</button>{/if}
+    </div>
 
-    <label>
-      {t("insp.colour")}
-      <input type="color" value={key.color ?? "#303743"} oninput={(e) => set("color", e.currentTarget.value)} />
-    </label>
-
-    {#if key.kind === "action"}
-      <fieldset>
-        <legend>{t("insp.short")}</legend>
-        {#each steps(key.action) as step, i}
-          <div class="row">
-            <input
-              value={step}
-              placeholder="ctrl+c"
-              oninput={(e) => set("action", setStep(key.action, i, e.currentTarget.value))}
-            />
-            {#if steps(key.action).length > 1}
-              <button class="icon-btn" onclick={() => set("action", setStep(key.action, i, ""))} title={t("insp.removestep")}>×</button>
-            {/if}
-          </div>
+    <div class="field">
+      <span>{t("insp.colour")}</span>
+      <div class="palette">
+        {#each palette as color}
+          <button
+            class:default-color={color === null}
+            class:selected-color={(key.color ?? null) === color}
+            style:background-color={color}
+            onclick={() => set("color", color)}
+            aria-label={color ?? t("insp.defaultcolour")}
+          ></button>
         {/each}
-        <button class="add" onclick={() => set("action", `${key.action ?? ""} >> `)}>{t("insp.addstep")}</button>
-      </fieldset>
+        <label class="custom-color" title={t("insp.customcolour")}>+
+          <input type="color" value={key.color ?? "#303743"} oninput={(e) => set("color", e.currentTarget.value)} />
+        </label>
+      </div>
+    </div>
 
-      <label>
-        {t("insp.long")}
-        <input value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value)} />
-      </label>
-      <label>
-        {t("insp.double")}
-        <input value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value)} />
-      </label>
+    <div class="field">
+      <span>{t("insp.action")}</span>
+      <div class="action-summary"><IconGlyph name="bolt" /> {description(key.action)}</div>
+    </div>
 
-      <label class="checkbox">
-        <input
-          type="checkbox"
-          checked={!!key.toggle}
-          onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)}
-        />
-        {t("insp.second")}
-      </label>
+    {#if key.kind === "action"}<button class="test" onclick={() => testKey(key)}>{t("insp.test")}</button>{/if}
 
-      {#if key.toggle}
-        <fieldset>
-          <legend>{t("insp.whenon")}</legend>
-          <p class="hint">{t("insp.facehint")}</p>
-          <input
-            value={key.toggle.label ?? ""}
-            placeholder={t("insp.label")}
-            oninput={(e) => setFace("label", e.currentTarget.value)}
-          />
-          <div class="row">
-            <button class="icon-btn grow" onclick={() => (picking = "toggle-icon")}>
-              <IconGlyph name={key.toggle.icon} /> {t("insp.faceicon")}
-            </button>
-            <input
-              type="color"
-              value={key.toggle.color ?? key.color ?? "#303743"}
-              oninput={(e) => setFace("color", e.currentTarget.value)}
-            />
-          </div>
-          <input
-            value={key.toggle.action ?? ""}
-            placeholder={t("insp.faceaction")}
-            oninput={(e) => setFace("action", e.currentTarget.value)}
-          />
-        </fieldset>
-      {/if}
-
-      <label class="checkbox">
-        <input type="checkbox" checked={!!key.danger} onchange={(e) => set("danger", e.currentTarget.checked)} />
-        {t("insp.confirm")}
-      </label>
-      <button class="test" onclick={() => testKey(key)}>{t("insp.test")}</button>
-    {:else if key.kind === "folder"}
-      <p class="hint">{t("insp.folder")}</p>
+    {#if hasAdvanced}
+      <details class="advanced">
+        <summary>{t("insp.more")}</summary>
+        <label>{t("insp.short")}<input value={key.action ?? ""} oninput={(e) => set("action", e.currentTarget.value)} /></label>
+        <label>{t("insp.long")}<input value={key.hold ?? ""} oninput={(e) => set("hold", e.currentTarget.value || null)} /></label>
+        <label>{t("insp.double")}<input value={key.double ?? ""} oninput={(e) => set("double", e.currentTarget.value || null)} /></label>
+        <label class="checkbox">
+          <input type="checkbox" checked={!!key.toggle} onchange={(e) => set("toggle", e.currentTarget.checked ? { label: key.label ?? "" } : null)} />
+          {t("insp.second")}
+        </label>
+        {#if key.toggle}
+          <label>{t("insp.whenon")}<input value={key.toggle.label ?? ""} oninput={(e) => setFace("label", e.currentTarget.value)} /></label>
+        {/if}
+      </details>
     {/if}
+
+    <button class="delete" onclick={() => emptyKeyAt(deckId, selection.pageId, selection.pos)}>{t("insp.delete")}</button>
   {:else}
     <p class="hint">{t("insp.empty")}</p>
   {/if}
-</div>
+</aside>
 
 {#if picking}
   <IconPicker
-    current={picking === "icon" ? key?.icon : key?.toggle?.icon}
-    onpick={(icon) => {
-      if (picking === "icon") set("icon", icon);
-      else setFace("icon", icon);
-      picking = null;
-    }}
-    onclose={() => (picking = null)}
+    current={key?.icon}
+    onpick={(icon) => { set("icon", icon); set("image", null); picking = false; }}
+    onclose={() => (picking = false)}
   />
 {/if}
 
 <style>
-  .inspector {
-    width: 240px;
-    flex-shrink: 0;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    color: var(--deck-color-text-primary);
-    overflow-y: auto;
-  }
-  .preview-key {
-    width: 64px;
-    height: 64px;
-    border-radius: 8px;
-    background: var(--deck-color-key-default-background);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-  }
-  .preview-key img {
-    width: 40px;
-    height: 40px;
-    object-fit: contain;
-  }
-  .glyph {
-    font-size: 24px;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--deck-color-text-secondary);
-  }
-  label.checkbox {
-    flex-direction: row;
-    align-items: center;
-  }
-  fieldset {
-    border: 1px solid var(--deck-color-surface-border);
-    border-radius: 6px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  legend {
-    font-size: 12px;
-    color: var(--deck-color-text-secondary);
-    padding: 0 4px;
-  }
-  .row {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    min-width: 0;
-  }
-  .row input:not([type]) {
-    flex: 1;
-    min-width: 0;
-  }
-  .grow {
-    flex: 1;
-  }
-  input,
-  .icon-btn,
-  .add {
-    background: var(--deck-color-surface-raised);
-    border: 1px solid var(--deck-color-surface-border);
-    border-radius: 6px;
-    padding: 6px 8px;
-    color: var(--deck-color-text-primary);
-    font-size: 13px;
-    min-width: 0;
-  }
-  input[type="file"] {
-    font-size: 11px;
-    padding: 4px;
-  }
-  .icon-btn,
-  .add {
-    cursor: pointer;
-    text-align: left;
-  }
-  .add {
-    font-size: 12px;
-    color: var(--deck-color-text-secondary);
-  }
-  .test {
-    margin-top: 8px;
-    background: var(--deck-color-accent);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 8px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--deck-color-text-secondary);
-  }
+  .inspector { width: 260px; flex-shrink: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; color: var(--deck-color-text-primary); overflow-y: auto; border-left: 1px solid var(--deck-color-surface-border); }
+  h2 { margin: 0; font-size: 15px; }
+  .preview-key { width: 72px; height: 72px; border-radius: 12px; background: var(--deck-color-key-default-background); display: flex; align-items: center; justify-content: center; align-self: center; box-shadow: 0 5px 10px -3px rgb(0 0 0 / 65%); }
+  .preview-key img { width: 48px; height: 48px; object-fit: contain; }
+  .glyph { font-size: 28px; }
+  label, .field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--deck-color-text-secondary); }
+  label.checkbox { flex-direction: row; align-items: center; }
+  input, .secondary { background: var(--deck-color-surface-raised); border: 1px solid var(--deck-color-surface-border); border-radius: 7px; padding: 7px 9px; color: var(--deck-color-text-primary); min-width: 0; }
+  .row { display: flex; gap: 6px; min-width: 0; }
+  .grow { flex: 1; }
+  .secondary { cursor: pointer; }
+  .hidden-file { display: none; }
+  .text-button { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--deck-color-accent); cursor: pointer; font-size: 12px; }
+  .palette { display: flex; gap: 7px; align-items: center; }
+  .palette > button, .custom-color { width: 25px; height: 25px; border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; cursor: pointer; }
+  .palette > button.default-color { background: linear-gradient(135deg, #303743 45%, transparent 46%, transparent 54%, #303743 55%); }
+  .palette > button.selected-color { outline: 2px solid var(--deck-color-accent); outline-offset: 2px; }
+  .custom-color { position: relative; display: grid; place-items: center; background: var(--deck-color-surface-raised); color: var(--deck-color-text-primary); overflow: hidden; }
+  .custom-color input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .action-summary { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--deck-color-surface-border); border-radius: 8px; background: var(--deck-color-surface-raised); color: var(--deck-color-text-primary); font-size: 13px; }
+  .test, .delete { border-radius: 8px; padding: 9px; cursor: pointer; font-weight: 600; }
+  .test { background: var(--deck-color-accent); color: white; border: 0; }
+  .delete { margin-top: auto; background: transparent; color: #ff7b86; border: 1px solid rgb(255 82 82 / 30%); }
+  .advanced { border-top: 1px solid var(--deck-color-surface-border); padding-top: 8px; }
+  .advanced summary { cursor: pointer; color: var(--deck-color-text-secondary); font-size: 12px; }
+  .advanced label { margin-top: 8px; }
+  .hint { font-size: 12px; color: var(--deck-color-text-secondary); line-height: 1.45; }
 </style>

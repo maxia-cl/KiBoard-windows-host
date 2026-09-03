@@ -152,7 +152,7 @@
     width: calc(var(--deck-key-size) * 0.5);
     height: calc(var(--deck-key-size) * 0.5);
     object-fit: contain;
-    image-rendering: pixelated;
+    image-rendering: auto;
   }
   .label {
     font-size: clamp(13px, calc(var(--deck-key-size) * 0.15), 18px);

@@ -19,7 +19,10 @@
  * Nothing breaks if they drift, the counts simply stop matching again.
  */
 export const AUTHORING_GRID = { rows: 3, cols: 5 };
-export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols;
+// Android owns the last three cells for the foreground-app panel. Drawing twelve authored keys
+// here makes Manual's preview paginate exactly as the phone instead of showing three phantom keys.
+export const RESERVED = 3;
+export const SCREEN = AUTHORING_GRID.rows * AUTHORING_GRID.cols - RESERVED;
 
 export function emptyKey(pos) {
   return { pos, kind: "empty" };

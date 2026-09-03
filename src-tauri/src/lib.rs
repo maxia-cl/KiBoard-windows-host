@@ -283,11 +283,19 @@ fn clear_preview() {
     net::ws::clear_preview();
 }
 
-/// The machine's app catalogue (F4) with its real icons, for the editor's Apps group.
+/// Recent visual apps with their real icons, for Manual's deliberately small Apps group.
+///
+/// This is the same source and order as Launcher: exposing the full Start-menu catalogue here used
+/// to put SDK prompts, maintenance tools and administrative consoles next to Chrome and Codex.
 #[tauri::command]
 fn app_catalogue() -> Vec<serde_json::Value> {
-    platform::apps::catalogue()
-        .iter()
+    let windir = std::env::var("SystemRoot")
+        .unwrap_or_else(|_| r"C:\Windows".into())
+        .to_lowercase();
+    platform::apps::recent_catalogue()
+        .into_iter()
+        .filter(|a| !a.exe.to_lowercase().starts_with(&windir))
+        .take(24)
         .map(|a| {
             let icon = platform::apps::icon(&a.id);
             json!({

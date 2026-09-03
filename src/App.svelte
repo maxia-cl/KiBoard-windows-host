@@ -9,11 +9,13 @@
   import Toast from "./lib/Toast.svelte";
   import PairingPanel from "./lib/PairingPanel.svelte";
   import { listDevices, pairingStatus } from "./lib/pairing.js";
-  import { invoke } from "./lib/bridge.js";
+  import { invoke, isTauri } from "./lib/bridge.js";
   import { t } from "./lib/i18n.js";
   import {
     undo,
     redo,
+    canUndo,
+    canRedo,
     init,
     isLoaded,
     isDirty,
@@ -26,11 +28,15 @@
     renameDeck,
     importDeck,
     exportSelectedDeck,
+    addPage,
+    resetDeckToSimple,
     showToast,
   } from "./lib/store.svelte.js";
 
-  let mode = $state("auto");
-  let manualEnabled = $state(false);
+  // Browser development opens the editor directly with inert sample data; packaged builds remain
+  // opt-in and always read the real setting from the host.
+  let mode = $state(isTauri() ? "auto" : "manual");
+  let manualEnabled = $state(!isTauri());
 
   // Leaving manual mode or closing the window puts every phone back on the SAVED decks. Without
   // this, a phone keeps showing an unsaved preview of a deck that exists nowhere.
@@ -66,6 +72,10 @@
     } catch {
       showToast(t("import.notjson"));
     }
+  }
+
+  function simplify(deckId) {
+    if (window.confirm(t("deck.resetconfirm"))) resetDeckToSimple(deckId);
   }
 
   onMount(() => {
@@ -161,9 +171,18 @@
         aria-label={t("deck.name")}
         onchange={(e) => renameDeck(deck.id, e.currentTarget.value)}
       />
-      <button class="tool" onclick={() => duplicateDeck(deck.id)} title={t("deck.duplicate")}>⧉</button>
-      <button class="tool" onclick={() => exportSelectedDeck(deck.id)} title={t("deck.export")}>↑</button>
-      <button class="tool" onclick={() => fileInput.click()} title={t("deck.import")}>↓</button>
+      <button class="tool" disabled={!canUndo()} onclick={() => undo()} title="Ctrl+Z">↺</button>
+      <button class="tool" disabled={!canRedo()} onclick={() => redo()} title="Ctrl+Y">↻</button>
+      <button class="add-page" onclick={() => addPage(deck.id)}>{t("deck.addpage")}</button>
+      <details class="more-menu">
+        <summary aria-label={t("deck.more")}>⋯</summary>
+        <div class="menu-panel">
+          <button onclick={() => duplicateDeck(deck.id)}>{t("deck.duplicate")}</button>
+          <button onclick={() => exportSelectedDeck(deck.id)}>{t("deck.exportshort")}</button>
+          <button onclick={() => fileInput.click()}>{t("deck.importshort")}</button>
+          <button class="reset" onclick={() => simplify(deck.id)}>{t("deck.reset")}</button>
+        </div>
+      </details>
       <input
         class="hidden-file"
         type="file"
@@ -224,6 +243,7 @@
   .deck-picker,
   .deck-name,
   .tool,
+  .add-page,
   .save {
     background: var(--deck-color-surface-interactive);
     border: 1px solid var(--deck-color-surface-border);
@@ -240,6 +260,46 @@
     padding: 4px 8px;
     font-size: 13px;
   }
+  .tool:disabled { opacity: 0.35; cursor: default; }
+  .add-page { white-space: nowrap; }
+  .more-menu { position: relative; }
+  .more-menu summary {
+    width: 31px;
+    height: 29px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--deck-color-surface-border);
+    border-radius: 6px;
+    background: var(--deck-color-surface-interactive);
+    cursor: pointer;
+    list-style: none;
+  }
+  .more-menu summary::-webkit-details-marker { display: none; }
+  .menu-panel {
+    position: absolute;
+    z-index: 100;
+    top: calc(100% + 7px);
+    left: 0;
+    width: 190px;
+    padding: 6px;
+    display: grid;
+    gap: 2px;
+    border: 1px solid var(--deck-color-surface-border);
+    border-radius: 9px;
+    background: var(--deck-color-surface);
+    box-shadow: 0 14px 34px rgb(0 0 0 / 45%);
+  }
+  .menu-panel button {
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--deck-color-text-primary);
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu-panel button:hover { background: var(--deck-color-surface-raised); }
+  .menu-panel .reset { color: #ff9aa2; }
   .hidden-file {
     display: none;
   }
@@ -304,6 +364,7 @@
     background: var(--deck-color-accent);
     color: var(--deck-color-app-background);
   }
+
   .tabs .manual-tab.active {
     background: var(--deck-color-manual-active);
     color: white;
@@ -325,5 +386,9 @@
     display: flex;
     flex: 1;
     min-height: 0;
+  }
+  @media (max-width: 1080px) {
+    header { gap: 9px; }
+    .connected { display: none; }
   }
 </style>
