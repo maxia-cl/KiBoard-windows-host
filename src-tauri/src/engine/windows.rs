@@ -96,14 +96,8 @@ pub fn windows_json(grid: Grid, page: usize) -> String {
             // Start menu shows. Desktop apps advertise no AUMID and keep the executable's name.
             // Resolved ONCE per window: this is a COM call, and the catalogue has ~80 entries.
             let aumid = platform::window_aumid(w.id);
-            let packaged = (!aumid.is_empty())
-                .then(|| {
-                    crate::platform::apps::catalogue()
-                        .iter()
-                        .find(|a| a.id.eq_ignore_ascii_case(&aumid))
-                })
-                .flatten();
-            let label = packaged.map(|a| a.name.clone()).unwrap_or_else(|| {
+            let catalogued = crate::platform::apps::app_for_window(&w.exe, &aumid);
+            let label = catalogued.map(|a| a.name.clone()).unwrap_or_else(|| {
                 std::path::Path::new(&w.exe)
                     .file_stem()
                     .map(|s| s.to_string_lossy().to_string())
@@ -120,12 +114,10 @@ pub fn windows_json(grid: Grid, page: usize) -> String {
             // key it draws, and that decoder requires the prefix — without it the switcher's
             // icons silently came out blank. Absent rather than empty when there is no icon: an
             // empty data URI decodes to zero bytes and draws a broken image, not nothing.
-            // Same story for the icon: a packaged app has no executable to pull one from, so it
-            // comes from the shell tile F4 already knows how to fetch.
-            let icon = match packaged {
-                Some(a) => crate::platform::apps::icon(&a.id),
-                None => platform::icon_cached(&w.exe),
-            };
+            // Use the same high-resolution shell artwork as Launcher for desktop and packaged
+            // apps alike. Falling straight to the executable here magnified a 32 px Codex/Chrome
+            // ICO frame across a high-density phone.
+            let icon = crate::platform::apps::icon_for_window(&w.exe, &aumid);
             json!({
                 "pos": pos, "id": w.id, "label": label, "sub": w.title,
                 "image": (!icon.is_empty()).then(|| format!("data:image/png;base64,{icon}")),

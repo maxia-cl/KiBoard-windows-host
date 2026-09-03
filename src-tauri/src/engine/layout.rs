@@ -366,12 +366,15 @@ pub async fn watch_active_app() {
         let foreground = platform::foreground_window();
         if app != last_app {
             last_app = app.clone();
-            icon = platform::extract_icon_b64(&path); // only on app change
             let aumid = if foreground == 0 {
                 String::new()
             } else {
                 platform::window_aumid(foreground)
             };
+            // Use the same 256 px Start-menu artwork as Launcher. Reading the executable directly
+            // often yields only its legacy 32 px ICO frame, which becomes visibly pixelated on a
+            // high-density phone (Codex and Chrome are common examples).
+            icon = platform::apps::icon_for_window(&path, &aumid); // only on app change
             if platform::apps::touch_recent_window(&path, &aumid) {
                 crate::config::refresh_launcher();
             }

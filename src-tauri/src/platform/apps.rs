@@ -149,14 +149,16 @@ fn touch_recent_id(id: &str) -> bool {
 /// Records the app owning a foreground window. Returns true only when it resolved to a catalogue
 /// entry, so callers know whether the generated Launcher may need to be reordered.
 pub fn touch_recent_window(exe: &str, aumid: &str) -> bool {
-    let Some(id) = catalogue()
-        .iter()
-        .find(|app| matches(&app.id, exe, aumid))
-        .map(|app| app.id.clone())
-    else {
+    let Some(id) = app_for_window(exe, aumid).map(|app| app.id.clone()) else {
         return false;
     };
     touch_recent_id(&id)
+}
+
+/// The Start-menu identity of a live window. Matching the catalogue is also how KiBoard avoids
+/// treating a packaged app's host executable as the app itself.
+pub fn app_for_window(exe: &str, aumid: &str) -> Option<&'static App> {
+    catalogue().iter().find(|app| matches(&app.id, exe, aumid))
 }
 
 /// Does a window belong to app `id`, given the executable behind it and the AUMID it advertises?
@@ -342,6 +344,19 @@ pub fn icon(id: &str) -> String {
     }
     cache.lock().unwrap().insert(id.to_string(), b.clone());
     b
+}
+
+/// Best available icon for a live window: prefer the Start-menu artwork, then fall back to the
+/// executable only when Windows has no catalogue entry or shell tile. `windows_icons` commonly
+/// returns a 32 px ICO frame; the shell supplies a 256 px image for apps such as Codex and Chrome.
+pub fn icon_for_window(exe: &str, aumid: &str) -> String {
+    if let Some(app) = app_for_window(exe, aumid) {
+        let b = icon(&app.id);
+        if !b.is_empty() {
+            return b;
+        }
+    }
+    crate::platform::icon_cached(exe)
 }
 
 /// Which of `ids` have at least one open window, in ONE pass over the window list — a layout can
@@ -895,6 +910,46 @@ mod tests {
             println!("{:60} {:50} {}", a.name, a.id, a.exe);
         }
         println!("total: {}", super::catalogue().len());
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_icon_sources() {
+        use base64::Engine;
+        let id = std::env::var("APP").unwrap();
+        let app = super::catalogue().iter().find(|app| app.id == id).unwrap();
+        let window = crate::platform::list_windows().into_iter().find(|window| {
+            let aumid = crate::platform::window_aumid(window.id);
+            super::matches(&id, &window.exe, &aumid)
+        });
+        for (name, value) in [
+            ("shell", super::icon(&app.id)),
+            (
+                "best",
+                window
+                    .as_ref()
+                    .map(|window| {
+                        let aumid = crate::platform::window_aumid(window.id);
+                        super::icon_for_window(&window.exe, &aumid)
+                    })
+                    .unwrap_or_default(),
+            ),
+            (
+                "exe",
+                window
+                    .as_ref()
+                    .map(|window| crate::platform::extract_icon_b64(&window.exe))
+                    .unwrap_or_default(),
+            ),
+        ] {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(value)
+                .unwrap_or_default();
+            let dimensions = image::load_from_memory(&bytes)
+                .map(|image| (image.width(), image.height()))
+                .ok();
+            println!("{name}: {dimensions:?}, {} bytes", bytes.len());
+        }
     }
 
     /// Manual round trip against the real desktop — launches, then focuses, then closes:
