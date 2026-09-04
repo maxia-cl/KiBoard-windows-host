@@ -5,6 +5,15 @@
 Notable changes to the KiBoard host. The phone app has its own; the message contract is versioned
 separately in [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol).
 
+## 2.0.2 (2026-09-04) — protocol `v0.5.0`
+
+### Fixed
+
+- Gmail shortcuts now resolve characters such as `?`, `/` and `#` through the active Windows
+  keyboard layout, including Latin American Spanish.
+- The **Gmail shortcuts** key can enable and inspect Gmail shortcuts again, with a direct settings
+  link as a fallback.
+
 ## 2.0.1 (2026-09-03) — protocol `v0.5.0`
 
 ### Added

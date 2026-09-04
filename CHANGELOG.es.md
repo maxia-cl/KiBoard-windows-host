@@ -5,6 +5,15 @@
 Cambios destacables del host de KiBoard. La app del teléfono tiene el suyo; el contrato de mensajes
 se versiona aparte en [`KiBoard-protocol`](https://github.com/maxia-cl/KiBoard-protocol).
 
+## 2.0.2 (2026-09-04) — protocolo `v0.5.0`
+
+### Corregido
+
+- Los atajos de Gmail ahora resuelven caracteres como `?`, `/` y `#` usando la distribución de
+  teclado activa en Windows, incluido español latinoamericano.
+- El botón **Atajos Gmail** vuelve a activar y consultar los atajos de Gmail, y ofrece un acceso
+  directo a la configuración como alternativa.
+
 ## 2.0.1 (2026-09-03) — protocolo `v0.5.0`
 
 ### Añadido
