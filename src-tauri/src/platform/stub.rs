@@ -59,3 +59,7 @@ pub fn process_running(_names: &[&str]) -> bool {
 pub fn take_screenshot() -> Result<(), &'static str> {
     Err("unsupported_platform")
 }
+
+pub fn press_layout_char(_character: char) -> Result<(), &'static str> {
+    Err("unsupported_platform")
+}

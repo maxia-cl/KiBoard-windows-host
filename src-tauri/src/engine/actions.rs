@@ -213,6 +213,15 @@ fn run_hotkey(combo: &str) -> Result<(), &'static str> {
         return Err("bad_keys");
     }
     let (key_tok, mod_toks) = parts.split_last().unwrap();
+    // A bare character is a layout-aware shortcut, not text. Resolve the physical key and any
+    // required Shift/Ctrl/Alt through the foreground window's keyboard layout. This keeps Gmail's
+    // `?`, `/` and `#` working on Spanish/Latin American keyboards as well as US keyboards.
+    if mod_toks.is_empty() {
+        let mut chars = key_tok.chars();
+        if let (Some(character), None) = (chars.next(), chars.next()) {
+            return platform::press_layout_char(character);
+        }
+    }
     let mods: Vec<enigo::Key> = mod_toks
         .iter()
         .map(|m| parse_modifier(m))

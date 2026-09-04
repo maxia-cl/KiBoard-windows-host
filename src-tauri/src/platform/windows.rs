@@ -4,6 +4,69 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+/// Presses the physical key (and modifiers) that produces `character` in the foreground
+/// application's keyboard layout. This matters for web-app shortcuts: on a Latin American
+/// keyboard `?`, `/` and `#` do not live on the same keys as on a US keyboard, and Unicode text
+/// injection is not interpreted as a shortcut by every browser.
+pub fn press_layout_char(character: char) -> Result<(), &'static str> {
+    use std::mem::size_of;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetKeyboardLayout, SendInput, VkKeyScanExW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+    let mut utf16 = [0u16; 2];
+    let encoded = character.encode_utf16(&mut utf16);
+    if encoded.len() != 1 {
+        return Err("bad_key");
+    }
+
+    let thread_id = unsafe { GetWindowThreadProcessId(GetForegroundWindow(), None) };
+    let layout = unsafe { GetKeyboardLayout(thread_id) };
+    let mapped = unsafe { VkKeyScanExW(encoded[0], layout) };
+    if mapped == -1 {
+        return Err("bad_key");
+    }
+
+    let virtual_key = VIRTUAL_KEY((mapped as u16) & 0xff);
+    let modifier_state = ((mapped as u16) >> 8) as u8;
+    let mut events = Vec::with_capacity(8);
+    let event = |key: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: key,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    let modifiers = [(1, VK_SHIFT), (2, VK_CONTROL), (4, VK_MENU)];
+    for (flag, key) in modifiers {
+        if modifier_state & flag != 0 {
+            events.push(event(key, KEYBD_EVENT_FLAGS(0)));
+        }
+    }
+    events.push(event(virtual_key, KEYBD_EVENT_FLAGS(0)));
+    events.push(event(virtual_key, KEYEVENTF_KEYUP));
+    for (flag, key) in modifiers.into_iter().rev() {
+        if modifier_state & flag != 0 {
+            events.push(event(key, KEYEVENTF_KEYUP));
+        }
+    }
+
+    let sent = unsafe { SendInput(&events, size_of::<INPUT>() as i32) };
+    if sent == events.len() as u32 {
+        Ok(())
+    } else {
+        Err("internal")
+    }
+}
+
 /// Extracts the executable's icon as base64 PNG. Empty string if it can't be done.
 /// ponytail: uses the .exe's real icon instead of bundling logos; covers any app.
 pub fn extract_icon_b64(path: &str) -> String {

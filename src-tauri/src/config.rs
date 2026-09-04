@@ -443,7 +443,7 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
                 b(
                     "Atajos Gmail",
                     "settings",
-                    "picker:Activar atajos=shift+slash>>tab>>enter;Ver estado=shift+slash",
+                    "picker:Activar atajos=?>>tab>>enter;Abrir configuración=open:https://mail.google.com/mail/u/0/#settings/general;Ver estado=?",
                 ),
                 b("Redactar", "new", "c"),
                 b("Buscar", "find", "/"),
@@ -2154,7 +2154,7 @@ pub(crate) fn refresh_launcher() {
 
 /// Version of the built-in profiles. Bump it when `default_profiles` changes so already-installed
 /// hosts refresh them (keeping the token and pairing).
-const PROFILES_VERSION: u32 = 49;
+const PROFILES_VERSION: u32 = 50;
 
 /// Shape of `config.json`. Bumped when the model changes in a way `#[serde(default)]` cannot
 /// absorb; `load` backs the old file up to `config.v1.bak` before rewriting it.
@@ -2569,7 +2569,17 @@ mod tests {
         assert!(setup.recommended, "setup must be visible on the first page");
         assert_eq!(
             setup.action,
-            "picker:Activar atajos=shift+slash>>tab>>enter;Ver estado=shift+slash"
+            "picker:Activar atajos=?>>tab>>enter;Abrir configuración=open:https://mail.google.com/mail/u/0/#settings/general;Ver estado=?"
+        );
+        assert_eq!(
+            crate::engine::actions::choose(&setup.action, Some(0), None).as_deref(),
+            Some("?>>tab>>enter"),
+            "the question mark must remain the first complete macro step"
+        );
+        assert_eq!(
+            crate::engine::actions::choose(&setup.action, Some(1), None).as_deref(),
+            Some("open:https://mail.google.com/mail/u/0/#settings/general"),
+            "Gmail settings are the keyboard-independent fallback"
         );
     }
 
